@@ -1,0 +1,13 @@
+*.csv
+*.txt
+*.xls
+*.xlsx
+*.pickle
+/venv/
+/.idea/
+*.pdf
+*.svg
+*.gif
+*.jpeg
+*.jpg
+
