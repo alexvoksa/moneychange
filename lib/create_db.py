@@ -11,7 +11,7 @@ class DB:
         self.cols = ['timestamp', 'www', 'from', 'to', 'in', 'out', 'amount',
                      'fromfee', 'tofee', 'minamount', 'maxamount', 'param']
         self.db = pd.DataFrame(columns=self.cols)
-        self.names_curr = pd.DataFrame('../data/all_curr.csv')
+        self.names_curr = pd.read_csv('../data/all_curr.csv')
         self.response = None
 
     def parse_xml(self, link_):
