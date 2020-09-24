@@ -3,7 +3,6 @@
 *.xls
 *.xlsx
 *.pickle
-/venv/
 /.idea/
 *.pdf
 *.svg
@@ -11,4 +10,4 @@
 *.jpeg
 *.jpg
 /data/
-
+/venv/
