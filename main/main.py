@@ -6,9 +6,13 @@ from lib.create_db import DB
 
 a = DB()
 update = input('update database? y/n')
+archive = input('archive database? y/n')
 
 if update == 'y':
-    a.update_db()
+    if archive == 'y':
+        a.update_db(archive=True)
+    else:
+        a.update_db(archive=False)
 else:
     pass
 

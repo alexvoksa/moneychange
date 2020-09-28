@@ -2,6 +2,7 @@ import requests
 import pandas as pd
 import datetime
 from lxml import objectify
+from tqdm import tqdm
 
 
 class DB:
@@ -13,40 +14,41 @@ class DB:
         self.names_curr = pd.read_csv('../data/all_curr.csv')
         self.response = None
 
-    @staticmethod
-    def xml2df(link_):
+    def xml2df(self, link_):
+        super_xml = pd.DataFrame(columns=self.cols)
         www = link_.split('/')[2]
         timestamp = str(datetime.datetime.now().strftime("%d:%m:%Y_%H:%M:%S"))
+
         text_response = requests.get(link_).text.encode()
         xml = objectify.fromstring(text_response)
         main_tree = xml.getroottree().getroot()
-        full_list = []
         for i in main_tree.getchildren():
-            dict_ = {j.tag: j.text for j in i.getchildren()}
-            temp_df = pd.DataFrame([list(dict_.values())], columns=list(dict_.keys()))
-            full_list.append(temp_df)
-        super_xml = pd.concat(full_list, axis=0, ignore_index=True)
-        super_xml['www'] = [www for i in range(len(super_xml))]
-        super_xml['timestamp'] = [timestamp for i in range(len(super_xml))]
+            search_field = i.getchildren()
+            tags = [i.tag for i in search_field]
+            text_values = [i.text for i in search_field]
+            tags.extend(['www', 'timestamp'])
+            text_values.extend([www, timestamp])
+            super_xml = pd.concat([super_xml, pd.DataFrame([text_values], columns=tags)], ignore_index=True)
+            super_xml = super_xml.astype(str)
+
         return super_xml
 
-    def update_db(self):
+    def update_db(self, archive=False):
         print('Updating database...')
-        for i in self.links[0].tolist():
-            df = DB.xml2df(i)
-            self.db = pd.concat([self.db, df], axis=0, ignore_index=True)
-        self.db['minamount'] = self.db['minamount'].astype(str)
-        self.db['maxamount'] = self.db['maxamount'].astype(str)
+        for i in tqdm(self.links[0].tolist()):
+            df = self.xml2df(i)
+            self.db = pd.concat([self.db, df], ignore_index=True)
         self.db['minamount'] = [i.split(' ')[0] if i is not None else None for i in self.db['minamount']]
         self.db['maxamount'] = [i.split(' ')[0] if i is not None else None for i in self.db['maxamount']]
-        self.db[['www', 'from', 'to', 'fromfee', 'tofee', 'param']] = self.db[['www', 'from', 'to', 'fromfee',
-                                                                               'tofee', 'param']].astype(str)
         self.db[['in', 'out', 'amount', 'minamount', 'maxamount']] = self.db[['in', 'out', 'amount', 'minamount',
                                                                               'maxamount']].astype(float)
         self.db['course'] = self.db['out'] / self.db['in']
         self.db.to_csv('../data/currencies.csv', index=False)
         print('Updated successfully')
-        self.archive_db()
+        if archive:
+            self.archive_db()
+        else:
+            pass
 
     def archive_db(self):
         print('Archiving database')
@@ -66,4 +68,4 @@ class DB:
                            (amount_ >= temp_db['minamount']) & (temp_db['maxamount'] >= amount_)]
         response = response.sort_values(by=['course'], ascending=False).head(10)
         self.response = response
-        print(response[['www', 'from', 'to', 'course', 'new_amount']])
+        print(response[['timestamp', 'www', 'from', 'to', 'course', 'new_amount']])
