@@ -1,11 +1,10 @@
-import re
 import requests
 import pandas as pd
 import datetime
+from lxml import objectify
 
 
 class DB:
-
     def __init__(self):
         self.links = pd.read_csv('../data/links.csv', header=None)
         self.cols = ['timestamp', 'www', 'from', 'to', 'in', 'out', 'amount',
@@ -14,40 +13,37 @@ class DB:
         self.names_curr = pd.read_csv('../data/all_curr.csv')
         self.response = None
 
-    def parse_xml(self, link_):
-        text_response = requests.get(link_).text
+    @staticmethod
+    def xml2df(link_):
         www = link_.split('/')[2]
-        pd_col = []
-        for col_name in self.cols[2:]:
-            match = re.compile('[<]{}[>].+[<]/{}[>]'.format(col_name, col_name))
-            match_values = match.findall(text_response)
-            if len(match_values) == 0 and len(pd_col) > 0:
-                final_values = tuple([None for i in range(len(pd_col[-1]))])
-            else:
-                final_values = tuple([i.replace('<{}>'.format(col_name), '').replace('</{}>'.format(col_name), '')
-                                      for i in match_values])
-            pd_col.append(final_values)
-        pd_col.insert(0, tuple([www for i in range(len(pd_col[0]))]))
-
         timestamp = str(datetime.datetime.now().strftime("%d:%m:%Y_%H:%M:%S"))
-
-        pd_col.insert(0, tuple([timestamp for i in range(len(pd_col[0]))]))
-        df = pd.DataFrame(pd_col).T
-        df.columns = self.cols
-        self.db = pd.concat([self.db, df], axis=0)
-        self.db['minamount'] = [str(i).split(' ')[0] if i is not None else None for i in self.db['minamount']]
-        self.db['maxamount'] = [str(i).split(' ')[0] if i is not None else None for i in self.db['maxamount']]
-        self.db[['www', 'from', 'to', 'fromfee', 'tofee', 'param']] = self.db[
-            ['www', 'from', 'to', 'fromfee', 'tofee', 'param']].astype(str)
-        self.db[['in', 'out', 'amount', 'minamount', 'maxamount']] = self.db[
-            ['in', 'out', 'amount', 'minamount', 'maxamount']].astype(float)
-        self.db['course'] = self.db['out'] / self.db['in']
-        self.db['timestamp'] = [timestamp for i in range(len(self.db))]
+        text_response = requests.get(link_).text.encode()
+        xml = objectify.fromstring(text_response)
+        main_tree = xml.getroottree().getroot()
+        full_list = []
+        for i in main_tree.getchildren():
+            dict_ = {j.tag: j.text for j in i.getchildren()}
+            temp_df = pd.DataFrame([list(dict_.values())], columns=list(dict_.keys()))
+            full_list.append(temp_df)
+        super_xml = pd.concat(full_list, axis=0, ignore_index=True)
+        super_xml['www'] = [www for i in range(len(super_xml))]
+        super_xml['timestamp'] = [timestamp for i in range(len(super_xml))]
+        return super_xml
 
     def update_db(self):
         print('Updating database...')
         for i in self.links[0].tolist():
-            self.parse_xml(i)
+            df = DB.xml2df(i)
+            self.db = pd.concat([self.db, df], axis=0, ignore_index=True)
+        self.db['minamount'] = self.db['minamount'].astype(str)
+        self.db['maxamount'] = self.db['maxamount'].astype(str)
+        self.db['minamount'] = [i.split(' ')[0] if i is not None else None for i in self.db['minamount']]
+        self.db['maxamount'] = [i.split(' ')[0] if i is not None else None for i in self.db['maxamount']]
+        self.db[['www', 'from', 'to', 'fromfee', 'tofee', 'param']] = self.db[['www', 'from', 'to', 'fromfee',
+                                                                               'tofee', 'param']].astype(str)
+        self.db[['in', 'out', 'amount', 'minamount', 'maxamount']] = self.db[['in', 'out', 'amount', 'minamount',
+                                                                              'maxamount']].astype(float)
+        self.db['course'] = self.db['out'] / self.db['in']
         self.db.to_csv('../data/currencies.csv', index=False)
         print('Updated successfully')
         self.archive_db()
