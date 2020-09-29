@@ -44,23 +44,25 @@ def curr_list(message):
 def change_curr(message):
     timestamp = str(datetime.datetime.now().strftime("%d:%m:%Y_%H:%M:%S"))
     text_input = message.text.split('_')
-    print(text_input)
+    if len(text_input) > 1:
+        print(message.chat.id, text_input)
+        from_ = text_input[0].replace('/change ', '').upper()
+        to_ = text_input[1].upper()
+        amount_ = float(text_input[2].replace(',', '.'))
 
-    from_ = text_input[0].replace('/change ', '').upper()
-    to_ = text_input[1].upper()
-    amount_ = float(text_input[2].replace(',', '.'))
+        search_result = db_cls.search(from_, to_, amount_)
+        response_len = len(search_result)
 
-    search_result = db_cls.search(from_, to_, amount_)
-    response_len = len(search_result)
+        log_string = str(message.chat.id) + ',' + str(from_) + ',' + str(to_) + ',' + str(amount_) + ',' + str(response_len)
+        DB.write_log(timestamp, log_string, 'user')
 
-    log_string = str(message.chat.id) + ',' + str(from_) + ',' + str(to_) + ',' + str(amount_) + ',' + str(response_len)
-    DB.write_log(timestamp, log_string, 'user')
-
-    if response_len > 0:
-        string_result = '\n\n'.join([str(i) for i in search_result.values])
+        if response_len > 0:
+            string_result = '\n\n'.join([str(i) for i in search_result.values])
+        else:
+            string_result = 'Ничего не найдено, хуевые валюты ты подбираешь, пидар'
+        bot.send_message(message.chat.id, string_result)
     else:
-        string_result = 'Ничего не найдено, хуевые валюты ты подбираешь, пидар'
-    bot.send_message(message.chat.id, string_result)
+        bot.send_message(message.chat.id, HELP_MESSAGE)
 
 
 @bot.message_handler(content_types=['text'])

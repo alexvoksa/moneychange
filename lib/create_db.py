@@ -5,15 +5,25 @@ from lxml import objectify
 from tqdm import tqdm
 import time
 
+COLUMNS = ['timestamp', 'www', 'from', 'to', 'in', 'out', 'amount','fromfee', 'tofee', 'minfee', 'city',
+           'minamount', 'maxamount', 'param']
+PATH_USR_LOGS = '../data/user_logs.txt'
+PATH_SEARCH_LOGS = '../data/search_logs.txt'
+PATH_DB_LOGS = '../data/logs.txt'
+PATH_INPUT_HINT = 'Paste correct path to log file'
+DATEFORMAT = "%d:%m:%Y_%H:%M:%S"
+PATH_CURRENCIES = '../data/currencies.csv'
+PATH_ARCHIVE_CURRENCIES = '../data/archive_currencies.csv'
+PATH_LINKS = '../data/links.csv'
+PATH_NAMES_CURR = '../data/all_curr.csv'
+
 
 class DB:
+
     def __init__(self):
-        self.links = pd.read_csv('../data/links.csv', header=None)
-        # column list could be extended manually
-        self.cols = ['timestamp', 'www', 'from', 'to', 'in', 'out', 'amount',
-                     'fromfee', 'tofee', 'minfee', 'city', 'minamount', 'maxamount', 'param']
-        self.db = pd.DataFrame(columns=self.cols)
-        self.names_curr = pd.read_csv('../data/all_curr.csv')
+        self.links = pd.read_csv(PATH_LINKS, header=None)
+        self.db = pd.DataFrame(columns=COLUMNS)
+        self.names_curr = pd.read_csv(PATH_NAMES_CURR)
         self.response = None
 
     @staticmethod
@@ -39,22 +49,22 @@ class DB:
     @staticmethod
     def write_log(time_, text, log):
         if log == 'user':
-            path = '../data/user_logs.txt'
+            path = PATH_USR_LOGS
         elif log == 'search':
-            path = '../data/search_logs.txt'
+            path = PATH_SEARCH_LOGS
         elif log == 'db':
-            path = '../data/logs.txt'
+            path = PATH_DB_LOGS
         else:
-            path = input('Paste correct path to log file')
-
+            path = input(PATH_INPUT_HINT)
         with open(path, 'a') as f:
             f.write(str(time_) + ',' + text + '\n')
 
-    def xml2df(self, link_):
-        super_xml = pd.DataFrame(columns=self.cols)
+    @staticmethod
+    def xml2df(link_):
+        super_xml = pd.DataFrame(columns=COLUMNS)
         # getting web-adress of site
         www = link_.split('/')[2]
-        timestamp = str(datetime.datetime.now().strftime("%d:%m:%Y_%H:%M:%S"))
+        timestamp = str(datetime.datetime.now().strftime(DATEFORMAT))
 
         text_response = DB.request(link_)
         if text_response != 1:
@@ -70,57 +80,59 @@ class DB:
                 super_xml = super_xml.astype(str)
         return super_xml
 
-    def update_db(self, archive=False):
+    @staticmethod
+    def update_db(archive=False):
         # This method can update current database and archive (append it) to a CSV-file
+        links = pd.read_csv(PATH_LINKS, header=None)
         print('Updating database...')
-        self.db = pd.DataFrame(columns=self.cols)
-        for i in tqdm(self.links[0].tolist()):
-            df = self.xml2df(i)
-            self.db = pd.concat([self.db, df], ignore_index=True)
+        db = pd.DataFrame(columns=COLUMNS)
+        for i in tqdm(links[0].tolist()):
+            df = DB.xml2df(i)
+            db = pd.concat([db, df], ignore_index=True)
         # some currencies comes with currency name, for example 100 USD
         # these two list comprehensives removes currency name from DataFrame
-        self.db['minamount'] = [i.split(' ')[0] if type(i) == str else i for i in self.db['minamount']]
-        self.db['maxamount'] = [i.split(' ')[0] if type(i) == str is not None else i for i in self.db['maxamount']]
+        db['minamount'] = [i.split(' ')[0] if type(i) == str else i for i in db['minamount']]
+        db['maxamount'] = [i.split(' ')[0] if type(i) == str is not None else i for i in db['maxamount']]
 
-        self.db[['in', 'out', 'amount', 'minamount', 'maxamount']] = self.db[['in', 'out', 'amount', 'minamount',
-                                                                              'maxamount']].astype(float)
-        self.db['course'] = self.db['out'] / self.db['in']
-
+        db[['in', 'out', 'amount', 'minamount', 'maxamount']] = db[['in', 'out', 'amount', 'minamount',
+                                                                    'maxamount']].astype(float)
+        db['course'] = db['out'] / db['in']
         # saving DataFrame to .CSV, later this can be saved to SQL DataBase
-        self.db.to_csv('../data/currencies.csv', index=False)
+        db.to_csv(PATH_CURRENCIES, index=False)
 
         print('Updated successfully')
 
-        timestamp = str(datetime.datetime.now().strftime("%d:%m:%Y_%H:%M:%S"))
+        timestamp = str(datetime.datetime.now().strftime(DATEFORMAT))
 
         # writing log-files
         DB.write_log(timestamp, 'DB updated', 'db')
 
         if archive:
-            self.archive_db()
+            DB.archive_db(db)
             # writing log-files
             DB.write_log(timestamp, 'DB archived', 'db')
 
         else:
             pass
 
-    def archive_db(self):
+    @staticmethod
+    def archive_db(database):
         print('Archiving database')
         try:
-            temp = pd.read_csv('../data/archive_currencies.csv')
+            temp = pd.read_csv(PATH_ARCHIVE_CURRENCIES)
         except FileNotFoundError:
             print('Database not found. It will be created in /data/ folder')
-            temp = pd.DataFrame(columns=self.cols)
-        temp = pd.concat([temp, self.db], axis=0)
-        temp.to_csv('../data/archive_currencies.csv', index=False)
+            temp = pd.DataFrame(columns=COLUMNS)
+        temp = pd.concat([temp, database], axis=0)
+        temp.to_csv(PATH_ARCHIVE_CURRENCIES, index=False)
         print('Archived successfully')
 
     def search(self, from_, to_, amount_, use_archived=True):
         if use_archived:
-            self.db = pd.read_csv('../data/currencies.csv')
+            self.db = pd.read_csv(PATH_CURRENCIES)
         else:
             pass
-        timestamp = str(datetime.datetime.now().strftime("%d:%m:%Y_%H:%M:%S"))
+        timestamp = str(datetime.datetime.now().strftime(DATEFORMAT))
         log_string = str(from_) + ',' + str(to_) + ',' + str(amount_) + '\n'
         DB.write_log(timestamp, log_string, 'search')
 
