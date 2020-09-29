@@ -143,6 +143,6 @@ class DB:
                            (temp_db['new_amount'] <= temp_db['amount']) &
                            (temp_db['minamount'] <= amount_) &
                            (temp_db['maxamount'] >= amount_)]
-        response = response.sort_values(by=['course'], ascending=False).head(10)
+        response = response.sort_values(by=['course'], ascending=False)
         self.response = response
         return response[['timestamp', 'www', 'from', 'to', 'course', 'new_amount']]

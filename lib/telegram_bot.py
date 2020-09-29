@@ -6,6 +6,15 @@ import telebot
 
 db_cls = DB()
 
+CURRENCIES_MESSAGE = '{}\n' \
+                     '<pre>' \
+                     '|  IN    |{} {}|\n' \
+                     '|  OUT   |<b>{} {}</b>|\n' \
+                     '|VALID ON|{} MSK|' \
+                     '</pre>'
+
+
+
 WELCOME_MESSAGE = 'Привет, кожаный ублюдок! \n\n' \
                   'Я - твой финансовый бог, слушай меня и я помогу тебе ' \
                   'безпрепятственно и с минимальными потерями \n\n' \
@@ -36,7 +45,7 @@ def welcome(message):
 
 @bot.message_handler(commands=['curr'])
 def curr_list(message):
-    print('User ' + message.chat.id + ' asked for curr list')
+    print('User ' + str(message.chat.id) + ' asked for curr list')
     bot.send_message(message.chat.id, CURRENCIES_LIST)
 
 
@@ -57,10 +66,14 @@ def change_curr(message):
         DB.write_log(timestamp, log_string, 'user')
 
         if response_len > 0:
-            string_result = '\n\n'.join([str(i) for i in search_result.values])
+            string_result = '\n\n'.join([CURRENCIES_MESSAGE.format(str(i[1]), str(amount_), str(i[2]),
+                                                                   str(i[5]), str(i[3]),
+                                                                   str(i[0])).replace('_', ' ')
+                                         for i in search_result.values])
+            # response[['timestamp', 'www', 'from', 'to', 'course', 'new_amount']]
         else:
             string_result = 'Ничего не найдено, хуевые валюты ты подбираешь, пидар'
-        bot.send_message(message.chat.id, string_result)
+        bot.send_message(message.chat.id, string_result, parse_mode='html')
     else:
         bot.send_message(message.chat.id, HELP_MESSAGE)
 
