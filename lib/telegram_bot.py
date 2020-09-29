@@ -11,7 +11,8 @@ FROM_MESSAGE = ''
 TO_MESSAGE = ''
 AMOUNT_MESSAGE = ''
 
-TOKEN = '1143239020:AAHsM9uwH0FukRmi40XVAb0nFIpgOGg8mpk'
+with open('../data/token.txt', 'r') as f:
+    TOKEN = f.read()
 
 bot = telebot.TeleBot(TOKEN)
 
