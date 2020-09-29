@@ -3,7 +3,25 @@ import numpy as np
 import requests
 import datetime
 from lib.create_db import DB
+import time
 
+
+if __name__ == '__main__':
+
+    a = DB()
+    while True:
+        a.update_db()
+        time.sleep(15)
+
+
+
+
+
+
+
+
+
+"""
 a = DB()
 update = input('update database? y/n')
 archive = input('archive database? y/n')
@@ -26,3 +44,4 @@ while True:
         continue
     else:
         break
+"""
