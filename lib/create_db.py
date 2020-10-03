@@ -15,7 +15,7 @@ DATEFORMAT = "%d:%m:%Y_%H:%M:%S"
 PATH_CURRENCIES = '../data/currencies.csv'
 PATH_ARCHIVE_CURRENCIES = '../data/archive_currencies.csv'
 PATH_LINKS = '../data/links.csv'
-PATH_NAMES_CURR = '../data/all_curr.csv'
+PATH_NAMES_CURR = '../data/all_curr_full.csv'
 
 
 class DB:
