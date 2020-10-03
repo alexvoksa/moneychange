@@ -246,4 +246,15 @@ def amount_get(query):
     bot.send_message(query.message.chat.id, 'Enter money amount you want to change')
 
 
+@bot.message_handler(lambda message: all(
+    [message.chat.id-1 == 'Enter money amount you want to change'] +
+    [any([message.text.isdigit(),
+          all([message.text.split('.')[0].isdigit(), message.text.split('.')[1].isdigit()]),
+          all([message.text.split(',')[0].isdigit(), message.text.split(',')[1].isdigit()])])]
+                                        )
+                     )
+def bot_answer(message):
+    bot.send_message(message.chat.id, '1')
+
+
 bot.polling(none_stop=True)
