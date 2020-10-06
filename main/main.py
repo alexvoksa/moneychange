@@ -3,7 +3,10 @@ import numpy as np
 import requests
 import datetime
 from lib.create_db import DB
+from lib.telegram_bot import BotCommander
 import time
+
+commander = BotCommander()
 
 
 if __name__ == '__main__':

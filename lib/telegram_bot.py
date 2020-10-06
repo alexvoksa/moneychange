@@ -2,28 +2,19 @@ import requests
 import pandas as pd
 import numpy as np
 import datetime
-from lib.create_db import DB
-import telebot
-from telebot import types
 import time
+import json
 
-db_cls = DB()
-df_curr = pd.read_csv('../data/all_curr_full.csv')
+with open('../data/token.txt', 'r') as f:
+    TOKEN = f.read()
 
-
-def search_curr(type_):
-    return np.array(df_curr[df_curr['type_short'] == type_][['code', 'desc']])
-
-
-fiat = search_curr('fiat')
-crypto = search_curr('crypto')
-ecomm = search_curr('ecomm')
 CURRENCIES_MESSAGE = '{}\n' \
                      '<pre>' \
                      '|  IN    |{} {}|\n' \
                      '|  OUT   |<b>{} {}</b>|\n' \
                      '|VALID ON|{} MSK|' \
                      '</pre>'
+
 WELCOME_MESSAGE = 'Привет, кожаный ублюдок! \n\n' \
                   'Я - твой финансовый бог, слушай меня и я помогу тебе ' \
                   'безпрепятственно и с минимальными потерями \n\n' \
@@ -32,229 +23,229 @@ WELCOME_MESSAGE = 'Привет, кожаный ублюдок! \n\n' \
                   ' которую ты отдаешь и валюту, которую тебе необходимо получть. \n' \
                   ' Не забудь указать сумму обмена, от этого зависит количество обменников,\n' \
                   ' которые будут отображены для лучшего результата.'
+
 HELP_MESSAGE = 'Если ты, Лебовский, решил узнать где деньги, команды следующие.\n' \
                'Чтобы увидеть наше охуительное приветствие - вводи /start \n' \
                'Чтобы увидеть список всех доступных валют - введи /curr \n' \
                'Если ты - ублюдок, мать твою, решил ко мне лезть - вводи \n' \
                ' /change С_НА_СУММА'
-CURRENCIES_LIST = db_cls.names_curr
-CURRENCIES_DICT = CURRENCIES_LIST.to_dict()
-CURRENCIES_LIST = '\n'.join(['|'.join(i[:3]) for i in CURRENCIES_LIST.values])
-
-with open('../data/token.txt', 'r') as f:
-    TOKEN = f.read()
-
-bot = telebot.TeleBot(TOKEN)
 
 
-@bot.message_handler(commands=['start'])
-def welcome(message):
-    bot.send_message(message.chat.id, WELCOME_MESSAGE)
+class BotCommander:
+    def __init__(self, TOKEN):
+        self.urlstring = 'https://api.telegram.org/bot{}/'.format(TOKEN) + '{}'
+        self.response = requests.post(url=self.urlstring.format('getUpdates'))
+        self.updates = json.loads(self.response.content)
+        self.query = self.updates['result']
+        self.currency_frame = pd.read_csv('../data/all_curr_full.csv')
+        self.fiat = BotCommander.generate_curr_arrays('fiat', self.currency_frame)
+        self.crypto = BotCommander.generate_curr_arrays('crypto', self.currency_frame)
+        self.ecomm = BotCommander.generate_curr_arrays('ecomm', self.currency_frame)
+        self.fiat_list = [i[0] for i in self.fiat]
+        self.crypto_list = [i[0] for i in self.crypto]
+        self.ecomm_list = [i[0] for i in self.ecomm]
+        self.fiat_btns = [{"text":str(i[1]), "callback_data": str(i[0])} for i in self.fiat]
+        self.crypto_btns = [{"text": str(i[0]), "callback_data": str(i[0])} for i in self.crypto]
+        self.ecomm_btns = [{"text": str(i[1]), "callback_data": str(i[0])} for i in self.ecomm]
+
+        self.buttons_type = {
+                            "chat_id": "{}",
+                            "text": "Change type?",
+                            "reply_markup": {
+                                "inline_keyboard":   [[
+                                                      {
+                                                        "text": "FIAT",
+                                                        "callback_data": "fiat_from"
+                                                      },
+                                                      {
+                                                        "text": "CRYPTO",
+                                                        "callback_data": "crypto_from"
+                                                      },
+                                                      {
+                                                        "text": "ECOMM",
+                                                        "callback_data": "ecomm_from"
+                                                      }
+                                                      ]]
+                                            }
+                                        }
+        self.buttons_fiat = {"chat_id": "", "text": "Change FIAT?", "reply_markup":
+            {"inline_keyboard": BotCommander.create_buttons_row(2, self.fiat_btns)
+            }
+        }
+        self.buttons_crypto = {"chat_id": "", "text": "Change CRYPTO?", "reply_markup":
+            {"inline_keyboard": BotCommander.create_buttons_row(3, self.crypto_btns)
+            }
+                             }
+        self.buttons_ecomm = {"chat_id": "", "text": "Change ECOMM?", "reply_markup":
+            {"inline_keyboard": BotCommander.create_buttons_row(2, self.ecomm_btns)
+            }
+                             }
+
+    @staticmethod
+    def create_buttons_row(shift, buttons_list):
+            return [buttons_list[start:start + shift] for start in range(0, len(buttons_list) - shift + 1, shift)]
+
+    @staticmethod
+    def generate_curr_arrays(type_, dataframe):
+        return np.array(dataframe[dataframe['type_short'] == type_][['code', 'desc']])
+
+    def update(self):
+        self.response = requests.post(url='https://api.telegram.org/bot{}/getUpdates'.format(TOKEN))
+        self.updates = json.loads(self.response.content)
+        self.query = self.query + self.updates['result']
+
+    def send_message(self, chat_id, text):
+        send_string = 'sendMessage?chat_id={}&text={}'.format(chat_id, text)
+        requests.post(url=self.urlstring.format(send_string))
+        print(self.urlstring.format(send_string))
+
+    def get_last_message(self):
+        self.update()
+        response_ = [self.updates['result'][-1]['message']['from']['id'],
+                     self.updates['result'][-1]['message']['from']['first_name'],
+                     self.updates['result'][-1]['message']['from']['username'],
+                     self.updates['result'][-1]['message']['from']['language_code'],
+                     self.updates['result'][-1]['message']['chat']['id'],
+                     self.updates['result'][-1]['message']['date'],
+                     self.updates['result'][-1]['message']['text']
+                     ]
+        response_ = [str(i) for i in response_]
+        print('id {} name {} username {}, language {},\nChat id {}, datestamp {}, text:\n\n{}'.format(*response_))
+
+    def send_button(self, button_dict, chat_id):
+        button_dict['chat_id'] = chat_id
+        urls = self.urlstring.format('sendMessage')
+        requests.post(urls, json=json.loads(json.dumps(button_dict)))
+
+    def proceed_query(self, response):
+        if 'callback_query' in response:
+            chat_id = response['callback_query']['message']['chat']['id']
+            data = response['callback_query']['data']
+            if 'fiat_from' in data:
+                self.send_button(button_dict=self.buttons_fiat, chat_id=chat_id)
+            elif 'crypto_from' in data:
+                self.send_button(button_dict=self.buttons_crypto, chat_id=chat_id)
+            elif 'ecomm_from' in data:
+                self.send_button(button_dict=self.buttons_ecomm, chat_id=chat_id)
+            else:
+                self.send_message(chat_id=chat_id, text='Menya ne vzali v mail.ru')
 
 
-@bot.message_handler(commands=['curr'])
-def curr_list(message):
-    print('User ' + str(message.chat.id) + ' asked for curr list')
-    pass
-    # bot.send_message(message.chat.id, CURRENCIES_LIST)
 
+"""
+    @staticmethod
+    def make_list(make_from, addition):
+        return [addition + i[0] for i in make_from]
 
-@bot.message_handler(commands=['change'])
-def change_curr(message):
-    timestamp = str(datetime.datetime.now().strftime("%d:%m:%Y_%H:%M:%S"))
-    text_input = message.text.split('_')
-    if len(text_input) > 1:
-        print(message.chat.id, text_input)
-        from_ = text_input[0].replace('/change ', '').upper()
-        to_ = text_input[1].upper()
-        amount_ = float(text_input[2].replace(',', '.'))
+    def welcome(self, message_chat_id):
+        self.bot.send_message(message_chat_id, BotCommander.WELCOME_MESSAGE)
 
-        search_result = db_cls.search(from_, to_, amount_)
-        response_len = len(search_result)
+    @staticmethod
+    def curr_list(message_chat_id):
+        print('User ' + str(message_chat_id) + ' asked for curr list')
 
-        log_string = str(message.chat.id) + ',' + str(from_) + ',' + str(to_) + ',' + str(amount_) + ',' + str(
-            response_len)
-        DB.write_log(timestamp, log_string, 'user')
+    def change_curr(self, message_chat_id, message_text_input):
+        timestamp = str(datetime.datetime.now().strftime("%d:%m:%Y_%H:%M:%S"))
+        text_input = message_text_input.split('_')
+        if len(text_input) > 1:
+            print(message_chat_id, text_input)
+            from_ = text_input[0].replace('/change ', '').upper()
+            to_ = text_input[1].upper()
+            amount_ = float(text_input[2].replace(',', '.'))
+            search_result = BotCommander.db_cls.search(from_, to_, amount_)
+            response_len = len(search_result)
 
-        if response_len > 0:
-            string_result = '\n\n'.join([CURRENCIES_MESSAGE.format(str(i[1]), str(amount_), str(i[2]),
-                                                                   str(i[5]), str(i[3]),
-                                                                   str(i[0])).replace('_', ' ')
-                                         for i in search_result.values])
-            # response[['timestamp', 'www', 'from', 'to', 'course', 'new_amount']]
+            log_string = str(message_chat_id) + \
+                         ',' + \
+                         str(from_) + \
+                         ',' + \
+                         str(to_) + \
+                         ',' + \
+                         str(amount_) + \
+                         ',' + \
+                         str(response_len)
+
+            DB.write_log(timestamp, log_string, 'user')
+
+            if response_len > 0:
+                string_result = '\n\n'.join([
+                    BotCommander.CURRENCIES_MESSAGE.format(str(i[1]),
+                                                           str(amount_),
+                                                           str(i[2]),
+                                                           str(i[5]),
+                                                           str(i[3]),
+                                                           str(i[0])).replace('_', ' ') for i in search_result.values
+                ])
+                # response[['timestamp', 'www', 'from', 'to', 'course', 'new_amount']]
+            else:
+                string_result = 'Ничего не найдено, хуевые валюты ты подбираешь, пидар'
+            self.bot.send_message(message_chat_id, string_result, parse_mode='html')
         else:
-            string_result = 'Ничего не найдено, хуевые валюты ты подбираешь, пидар'
-        bot.send_message(message.chat.id, string_result, parse_mode='html')
-    else:
-        bot.send_message(message.chat.id, HELP_MESSAGE)
+            self.bot.send_message(message_chat_id, BotCommander.HELP_MESSAGE)
 
+    def choose_type_of_curr(self, query, dict_, epoch):
+        keyboard = types.InlineKeyboardMarkup(row_width=3)
+        fiat_str = 'fiat' + '_' + epoch
+        crypto_str = 'crypto' + '_' + epoch
+        ecomm_str = 'ecomm' + '_' + epoch
+        fiat_button = types.InlineKeyboardButton(text="FIAT", callback_data=fiat_str)
+        crypto_button = types.InlineKeyboardButton(text="CRYPTO", callback_data=crypto_str)
+        ecomm_button = types.InlineKeyboardButton(text="ECOMM", callback_data=ecomm_str)
+        keyboard.row(*[fiat_button, crypto_button, ecomm_button])
+        self.bot.send_message(query.message.chat.id, 'Change {}'.format(epoch), reply_markup=keyboard)
+        print(dict_)
 
-# from = 1, to = 2, fiat = f, crypto = c, ecomm = e, None = 0
-
-
-@bot.message_handler(commands=['cd'])
-def start_change(message):
-    qstring = '{}_{}_{}_{}_{}_{}_{}_{}'
-    keyboard = types.InlineKeyboardMarkup(row_width=3)
-    fiat_str = ['1', 'f'] + ['0'] * 6
-    crypto_str = ['1', 'c'] + ['0'] * 6
-    ecomm_str = ['1', 'e'] + ['0'] * 6
-    fiat_button = types.InlineKeyboardButton(text="FIAT", callback_data=qstring.format(*fiat_str))
-    crypto_button = types.InlineKeyboardButton(text="CRYPTO", callback_data=qstring.format(*crypto_str))
-    ecomm_button = types.InlineKeyboardButton(text="ECOMM", callback_data=qstring.format(*ecomm_str))
-    keyboard.row(*[fiat_button, crypto_button, ecomm_button])
-    bot.send_message(message.chat.id, 'What you want to change from?', reply_markup=keyboard)
-
-
-@bot.callback_query_handler(lambda query: all(
-    [query.data.split('_')[0] == '1'] +
-    [query.data.split('_')[1] != '0'] +
-    ['0' == i for i in query.data.split('_')[2:]]
-)
-                            )
-def step_one(query):
-    idx = query.data.split('_')[1]
-    qstring = '1_{}'.format(idx) + '_{}_{}_{}_{}_{}_{}'
-
-    if idx == 'f':
-        row_width = 2
+    @staticmethod
+    def fill_buttons(source, add, row_width, no_crypt=True):
         keyboard = types.InlineKeyboardMarkup(row_width=row_width)
-        fiat_buttons = [types.InlineKeyboardButton(text=i[1],
-                                                   callback_data=qstring.format(*([i[0]] +
-                                                                                  ['0'] * 5))) for i in fiat]
-        shift = 2
-        for start in range(0, len(fiat_buttons) - shift + 1, 2):
-            keyboard.row(*list(fiat_buttons[start:start + shift]))
-        bot.send_message(query.message.chat.id, 'Change FROM?', reply_markup=keyboard)
+        if no_crypt:
+            buttons = [types.InlineKeyboardButton(text=i[1], callback_data=add + '_' + i[0]) for i in source]
+        else:
+            buttons = [types.InlineKeyboardButton(text=i[0], callback_data=add + '_' + i[0]) for i in source]
+        for start in range(0, len(source) - row_width + 1, row_width):
+            keyboard.row(*list(buttons[start:start + row_width]))
+        return keyboard
 
-    elif idx == 'c':
-        row_width = 3
-        crypto_keyboard = types.InlineKeyboardMarkup(row_width=row_width)
-        crypto_buttons = [types.InlineKeyboardButton(text=i[0],
-                                                     callback_data=qstring.format(*([i[0]] +
-                                                                                    ['0'] * 5))) for i in crypto]
-        for start in range(0, len(crypto_buttons) - row_width + 1, row_width):
-            crypto_keyboard.row(*list(crypto_buttons[start:start + row_width]))
-        bot.send_message(query.message.chat.id, 'Change FROM?', reply_markup=crypto_keyboard)
+    # choose_name_of_curr(query, q_dict, 'from', add='from')
+    def choose_name_of_curr(self, query, dict_, epoch, add):
+        if dict_[epoch] == 'fiat_from':
+            keyboard = BotCommander.fill_buttons(source=fiat, add=add, row_width=2)
+            self.bot.send_message(query.message.chat.id, 'Which {}?'.format(epoch), reply_markup=keyboard)
+        elif dict_[epoch] == 'crypto_from':
+            keyboard = BotCommander.fill_buttons(source=crypto, add=add, row_width=3, no_crypt=False)
+            self.bot.send_message(query.message.chat.id, 'Which {}?'.format(epoch), reply_markup=keyboard)
+        elif dict_[epoch] == 'ecomm_from':
+            keyboard = BotCommander.fill_buttons(source=ecomm, add=add, row_width=2)
+            self.bot.send_message(query.message.chat.id, 'Which {}?'.format(epoch), reply_markup=keyboard)
+        else:
+            print('error 0001, wrong splitter or wrong id')
+        print(dict_)
 
-    elif idx == 'e':
-        row_width = 2
-        ecomm_keyboard = types.InlineKeyboardMarkup(row_width=row_width)
-        ecomm_buttons = [types.InlineKeyboardButton(text=i[1],
-                                                    callback_data=qstring.format(*([i[0]] +
-                                                                                   ['0'] * 5))) for i in ecomm]
-        for start in range(0, len(ecomm_buttons) - row_width + 1, row_width):
-            ecomm_keyboard.row(*list(ecomm_buttons[start:start + row_width]))
-        bot.send_message(query.message.chat.id, 'Change FROM?', reply_markup=ecomm_keyboard)
-    else:
-        print('error 0001, wrong splitter or wrong id')
+    def start_change(self, message):
+        keyboard = types.InlineKeyboardMarkup(row_width=1)
+        start_button = types.InlineKeyboardButton(text="Start!", callback_data='start')
+        keyboard.row(start_button)
+        self.bot.send_message(message.chat.id, 'You want to start?', reply_markup=keyboard)
 
+    def start_change(self, message):
+        keyboard = types.InlineKeyboardMarkup(row_width=1)
+        start_button = types.InlineKeyboardButton(text="Start!", callback_data='start')
+        keyboard.row(start_button)
+        self.bot.send_message(message.chat.id, 'You want to start?', reply_markup=keyboard)
 
-@bot.callback_query_handler(lambda query: all(
-    [query.data.split('_')[0] == '1'] +
-    [query.data.split('_')[1] != '0'] +
-    [query.data.split('_')[2] != '0'] +
-    ['0' == i for i in query.data.split('_')[3:]]
-)
-                            )
-def step_two(query):
+    def step_one(self, query):
+        """ At this step nothing will be writen in the dictionary!!!!!!!!!!! """
+        self.choose_type_of_curr(query, self.q_dict, 'from')
 
-    idx_one = query.data.split('_')[1]
-    idx_two = query.data.split('_')[2]
-    qstring = '1_{}_{}'.format(*[idx_one, idx_two]) + '_{}_{}_{}_{}_{}'
+    def change_from(self, query):
+        self.choose_name_of_curr(query, self.q_dict, 'from', add='from')
 
-    keyboard = types.InlineKeyboardMarkup(row_width=3)
-    fiat_str = ['2', 'f'] + ['0'] * 3
-    crypto_str = ['2', 'c'] + ['0'] * 3
-    ecomm_str = ['2', 'e'] + ['0'] * 3
+    def change_to(self, query):
+        self.q_dict['to'] = query.data
+        self.choose_name_of_curr(query, self.q_dict, 'to', add='to')
 
-    fiat_button = types.InlineKeyboardButton(text="FIAT", callback_data=qstring.format(*fiat_str))
-    crypto_button = types.InlineKeyboardButton(text="CRYPTO", callback_data=qstring.format(*crypto_str))
-    ecomm_button = types.InlineKeyboardButton(text="ECOMM", callback_data=qstring.format(*ecomm_str))
-    keyboard.row(*[fiat_button, crypto_button, ecomm_button])
+    def change_fiat(self, query):
+        self.q_dict['from'] = query.data
+        self.choose_type_of_curr(query, q_dict, 'from')
 
-    bot.send_message(query.message.chat.id, 'Change ' + idx_two + ' TO ?', reply_markup=keyboard)
-    print(qstring)
-
-
-@bot.callback_query_handler(lambda query: all(
-    [query.data.split('_')[0] == '1'] +
-    [query.data.split('_')[1] != '0'] +
-    [query.data.split('_')[2] != '0'] +
-    [query.data.split('_')[3] == '2'] +
-    [query.data.split('_')[4] != '0'] +
-    ['0' == i for i in query.data.split('_')[5:]]
-)
-                            )
-def step_one(query):
-
-    # idx_zero = 1
-    idx_one = query.data.split('_')[1]
-    idx_two = query.data.split('_')[2]
-    # idx_three =  2
-    idx_four = query.data.split('_')[4]
-
-    qstring = '1_{}_{}_2_{}_'.format(*[idx_one, idx_two, idx_four]) + '{}_{}_{}'
-    print(qstring)
-    if idx_four == 'f':
-        row_width = 2
-        keyboard = types.InlineKeyboardMarkup(row_width=row_width)
-        fiat_buttons = [types.InlineKeyboardButton(text=i[1],
-                                                   callback_data=qstring.format(*([i[0]] + ['a'] +
-                                                                                  ['0']))) for i in fiat]
-        shift = 2
-        for start in range(0, len(fiat_buttons) - shift + 1, 2):
-            keyboard.row(*list(fiat_buttons[start:start + shift]))
-        bot.send_message(query.message.chat.id, 'Change FROM?', reply_markup=keyboard)
-
-    elif idx_four == 'c':
-        row_width = 3
-        crypto_keyboard = types.InlineKeyboardMarkup(row_width=row_width)
-        crypto_buttons = [types.InlineKeyboardButton(text=i[0],
-                                                     callback_data=qstring.format(*([i[0]] + ['a'] +
-                                                                                    ['0']))) for i in crypto]
-        for start in range(0, len(crypto_buttons) - row_width + 1, row_width):
-            crypto_keyboard.row(*list(crypto_buttons[start:start + row_width]))
-        bot.send_message(query.message.chat.id, 'Change FROM?', reply_markup=crypto_keyboard)
-
-    elif idx_four == 'e':
-        row_width = 2
-        ecomm_keyboard = types.InlineKeyboardMarkup(row_width=row_width)
-        ecomm_buttons = [types.InlineKeyboardButton(text=i[1],
-                                                    callback_data=qstring.format(*([i[0]] + ['a'] +
-                                                                                   ['0']))) for i in ecomm]
-        for start in range(0, len(ecomm_buttons) - row_width + 1, row_width):
-            ecomm_keyboard.row(*list(ecomm_buttons[start:start + row_width]))
-        bot.send_message(query.message.chat.id, 'Change FROM?', reply_markup=ecomm_keyboard)
-    else:
-        print('error 0001, wrong splitter or wrong id')
-    print(qstring)
-
-
-@bot.callback_query_handler(lambda query: all(
-    [query.data.split('_')[0] == '1'] +
-    [query.data.split('_')[1] != '0'] +
-    [query.data.split('_')[2] != '0'] +
-    [query.data.split('_')[3] == '2'] +
-    [query.data.split('_')[4] != '0'] +
-    [query.data.split('_')[5] != '0'] +
-    [query.data.split('_')[6] == 'a'] +
-    [query.data.split('_')[7] == '0']
-                                            )
-                            )
-def amount_get(query):
-    bot.send_message(query.message.chat.id, 'Enter money amount you want to change')
-
-
-@bot.message_handler(lambda message: all(
-    [message.chat.id-1 == 'Enter money amount you want to change'] +
-    [any([message.text.isdigit(),
-          all([message.text.split('.')[0].isdigit(), message.text.split('.')[1].isdigit()]),
-          all([message.text.split(',')[0].isdigit(), message.text.split(',')[1].isdigit()])])]
-                                        )
-                     )
-def bot_answer(message):
-    bot.send_message(message.chat.id, '1')
-
-
-bot.polling(none_stop=True)
+"""
