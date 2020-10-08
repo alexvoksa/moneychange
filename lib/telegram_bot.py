@@ -59,9 +59,9 @@ class BotCommander:
         self.crypto_buttons_from = [{"text": str(i[0]), "callback_data": 'from_' + str(i[0])} for i in self.crypto]
         self.ecomm_buttons_from = [{"text": str(i[1]), "callback_data": 'from_' + str(i[0])} for i in self.ecomm]
 
-        self.fiat_buttons_to = [{"text": str(i[1]), "callback_data": 'to_' + str(i[0])} for i in self.fiat]
-        self.crypto_buttons_to = [{"text": str(i[0]), "callback_data": 'to_' + str(i[0])} for i in self.crypto]
-        self.ecomm_buttons_to = [{"text": str(i[1]), "callback_data": 'to_' + str(i[0])} for i in self.ecomm]
+        self.fiat_buttons_to = [{"text": str(i[1]), "callback_data": 'amount_' + str(i[0])} for i in self.fiat]
+        self.crypto_buttons_to = [{"text": str(i[0]), "callback_data": 'amount_' + str(i[0])} for i in self.crypto]
+        self.ecomm_buttons_to = [{"text": str(i[1]), "callback_data": 'amount_' + str(i[0])} for i in self.ecomm]
 
         '''final buttons, that used in bot'''
         # these two stands for currency type: FIAT, CRYPTO and ECOMM
@@ -168,20 +168,49 @@ class BotCommander:
             '''Вот тут надо дописать код, чтобы оно записывало в словарь self.data данные после каждого запроса'''
 
             data = response['callback_query']['data']
+            # <-- incoming callback query [fiat_from, crypto_from, ecomm_from]
             if 'fiat_from' in data:
                 self.send_button(button_dict=self.buttons_fiat_from, chat_id=chat_id)
             elif 'crypto_from' in data:
                 self.send_button(button_dict=self.buttons_crypto_from, chat_id=chat_id)
             elif 'ecomm_from' in data:
                 self.send_button(button_dict=self.buttons_ecomm_from, chat_id=chat_id)
+            # --> outgoing query [from_CurrName]
+
+            # <-- incoming query [from_CurrName]
             elif 'from_' in data:
-                self.send_button(button_dict=self.buttons_type_from, chat_id=chat_id)
-            elif 'to_' in data:
                 self.send_button(button_dict=self.buttons_type_to, chat_id=chat_id)
+            # --> outgoing query [fiat_to, crypto_to, ecomm_to]
+
+            # <-- incoming query [fiat_to, crypto_to, ecomm_to]
+            elif 'fiat_to' in data:
+                self.send_button(button_dict=self.buttons_fiat_to, chat_id=chat_id)
+            elif 'crypto_to' in data:
+                self.send_button(button_dict=self.buttons_crypto_to, chat_id=chat_id)
+            elif 'ecomm_to' in data:
+                self.send_button(button_dict=self.buttons_ecomm_to, chat_id=chat_id)
+            # --> outgoing query [amount_CurrName]
+
+            # <-- incoming query [amount_CurrName]
+            elif 'amount_' in data:
+                if chat_id == '327212815':
+                    self.send_message(chat_id=chat_id, text='Ты пидор')
+                else:
+                    self.send_message(chat_id=chat_id, text='Ты лучший человек на свете')
+            # NO QUERY
+
+
             else:
                 self.send_message(chat_id=chat_id, text='Menya ne vzali v mail ru')
-        elif 'message' in response and '/start' in response['message']['text']:
+
+        elif ('message' in response) and ('/start' in response['message']['text']):
             chat_id = response['message']['chat']['id']
             self.send_button(button_dict=self.buttons_type_from, chat_id=chat_id)
         else:
             print('Menya ne vzali v mail ru [3]')
+
+
+a = BotCommander(TOKEN)
+while True:
+    a.update()
+    a.proceed_query(a.query[-1])
