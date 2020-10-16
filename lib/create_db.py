@@ -5,7 +5,7 @@ from lxml import objectify
 from tqdm import tqdm
 import time
 
-COLUMNS = ['timestamp', 'www', 'from', 'to', 'in', 'out', 'amount','fromfee', 'tofee', 'minfee', 'city',
+COLUMNS = ['timestamp', 'www', 'from', 'to', 'in', 'out', 'amount', 'fromfee', 'tofee', 'minfee', 'city',
            'minamount', 'maxamount', 'param']
 PATH_USR_LOGS = '../data/user_logs.txt'
 PATH_SEARCH_LOGS = '../data/search_logs.txt'

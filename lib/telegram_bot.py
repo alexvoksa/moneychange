@@ -4,6 +4,7 @@ import numpy as np
 import datetime
 import time
 import json
+from lib.create_db import DB
 
 with open('../data/token.txt', 'r') as f:
     TOKEN = f.read()
@@ -66,7 +67,7 @@ class BotCommander:
         '''final buttons, that used in bot'''
         # these two stands for currency type: FIAT, CRYPTO and ECOMM
         # and this one stands for 'from' callback query
-        self.buttons_type_from = {"chat_id": "", "text": "Change type?",
+        self.buttons_type_from = {"chat_id": "", "text": "Change FROM?",
                                   "reply_markup": {"inline_keyboard": [
                                       [{"text": "FIAT", "callback_data": "fiat_from"},
                                        {"text": "CRYPTO", "callback_data": "crypto_from"},
@@ -75,7 +76,7 @@ class BotCommander:
                                   }
                                   }
         # and this one stands for 'to' callback query
-        self.buttons_type_to = {"chat_id": "", "text": "Change type?",
+        self.buttons_type_to = {"chat_id": "", "text": "Change TO?",
                                 "reply_markup": {"inline_keyboard": [
                                     [{"text": "FIAT", "callback_data": "fiat_to"},
                                      {"text": "CRYPTO", "callback_data": "crypto_to"},
@@ -112,9 +113,10 @@ class BotCommander:
              }
                                  }
 
-        self.data = {
-            'chat_id': {'user_id': None, 'first_name': None, 'username': None, 'language_code': None, 'date': None,
-                        'from': None, 'to': None, 'amount': None}}
+        self.data = {}
+        # {'chat_id': {'status': None, 'user_id': None, 'first_name': None, 'username': None,
+        #                'language_code': None, 'date': None, 'from': None, 'to': None, 'amount': None}}
+        self.engine = DB()
 
     @staticmethod
     def create_buttons_row(shift, buttons_list):
@@ -153,19 +155,19 @@ class BotCommander:
 
     def proceed_query(self, response):
         if 'callback_query' in response:
-
-            '''{'chat_id':{'user_id':None, 
-                           'first_name':None, 
-                           'username':None, 
-                           'language_code':None, 
-                           'date':None,
-                            'from':None, 
-                            'to':None, 
-                            'amount':None}}'''
-
             chat_id = response['callback_query']['message']['chat']['id']
-            user_id = response['callback_query']['message']['from']
-            '''Вот тут надо дописать код, чтобы оно записывало в словарь self.data данные после каждого запроса'''
+            user_id = response['callback_query']['from']['id']
+            first_name = response['callback_query']['from']['first_name']
+            username = response['callback_query']['from']['username']
+            language_code = response['callback_query']['from']['language_code']
+            try:
+                type(self.data[chat_id])
+            except KeyError:
+                self.data.update({chat_id: {}})
+            self.data[chat_id]['user_id'] = user_id
+            self.data[chat_id]['first_name'] = first_name
+            self.data[chat_id]['username'] = username
+            self.data[chat_id]['language_code'] = language_code
 
             data = response['callback_query']['data']
             # <-- incoming callback query [fiat_from, crypto_from, ecomm_from]
@@ -179,6 +181,11 @@ class BotCommander:
 
             # <-- incoming query [from_CurrName]
             elif 'from_' in data:
+                base_dict_from = self.data[response['callback_query']['message']['chat']['id']]
+                base_dict_from['timestamp_from'] = response['callback_query']['message']['date']
+                base_dict_from['from'] = data
+                self.data[response['callback_query']['message']['chat']['id']] = base_dict_from
+                print(self.data)
                 self.send_button(button_dict=self.buttons_type_to, chat_id=chat_id)
             # --> outgoing query [fiat_to, crypto_to, ecomm_to]
 
@@ -193,24 +200,44 @@ class BotCommander:
 
             # <-- incoming query [amount_CurrName]
             elif 'amount_' in data:
-                if chat_id == '327212815':
-                    self.send_message(chat_id=chat_id, text='Ты пидор')
-                else:
-                    self.send_message(chat_id=chat_id, text='Ты лучший человек на свете')
+                print(self.data)
+                base_dict_to = self.data[response['callback_query']['message']['chat']['id']]
+                base_dict_to['timestamp_to'] = response['callback_query']['message']['date']
+                base_dict_to['to'] = data
+                base_dict_to['status'] = 1
+                print(base_dict_to)
+                self.data[response['callback_query']['message']['chat']['id']] = base_dict_to
+                print(self.data)
+                self.send_message(chat_id=chat_id, text='Enter money amount you want to change')
             # NO QUERY
-
-
             else:
-                self.send_message(chat_id=chat_id, text='Menya ne vzali v mail ru')
+                self.send_message(chat_id=chat_id, text='Ты пидар')
 
         elif ('message' in response) and ('/start' in response['message']['text']):
             chat_id = response['message']['chat']['id']
             self.send_button(button_dict=self.buttons_type_from, chat_id=chat_id)
+
+        elif ('message' in response) and (self.data[response['message']['chat']['id']]['status'] == 1):
+            amount_base_dict = self.data[response['message']['chat']['id']]
+            amount_base_dict['timestamp_amount'] = response['message']['date']
+            amount_base_dict['amount'] = response['message']['text']
+            amount_base_dict['status'] = 0
+            self.data[response['message']['chat']['id']] = amount_base_dict
+            from_ = self.data[response['message']['chat']['id']]['from'].split('_')[1]
+            to_ = self.data[response['message']['chat']['id']]['to'].split('_')[1]
+            amount_ = float(self.data[response['message']['chat']['id']]['amount'])
+            response_query = self.engine.search(from_, to_, amount_, use_archived=True)
+            response_len = len(response_query)
+            if response_len > 0:
+                string_result = '\n\n'.join([str(i) for i in response_query.values])
+                string_result = '\n\n'.join([CURRENCIES_MESSAGE.format(str(i[1]), str(amount_), str(i[2]),
+                                                                       str(i[5]), str(i[3]),
+                                                                       str(i[0])).replace('_', ' ')
+                                             for i in response_query.values])
+                self.send_message(chat_id=response['message']['chat']['id'], text=string_result)
+
         else:
-            print('Menya ne vzali v mail ru [3]')
+            print('Gde ti, pidar, za toboy sledit FBI')
 
 
 a = BotCommander(TOKEN)
-while True:
-    a.update()
-    a.proceed_query(a.query[-1])
