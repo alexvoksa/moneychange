@@ -237,7 +237,7 @@ class BotCommander:
                 self.send_message(chat_id=response['message']['chat']['id'], text=string_result)
 
         else:
-            print('Gde ti, pidar, za toboy sledit FBI')
+            print('Err')
 
 
 a = BotCommander(TOKEN)
