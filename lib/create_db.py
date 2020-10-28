@@ -7,15 +7,15 @@ import time
 
 COLUMNS = ['timestamp', 'www', 'from', 'to', 'in', 'out', 'amount', 'fromfee', 'tofee', 'minfee', 'city',
            'minamount', 'maxamount', 'param']
-PATH_USR_LOGS = '../data/user_logs.txt'
-PATH_SEARCH_LOGS = '../data/search_logs.txt'
-PATH_DB_LOGS = '../data/logs.txt'
+PATH_USR_LOGS = 'data/user_logs.txt'
+PATH_SEARCH_LOGS = 'data/search_logs.txt'
+PATH_DB_LOGS = 'data/logs.txt'
 PATH_INPUT_HINT = 'Paste correct path to log file'
 DATEFORMAT = "%d:%m:%Y_%H:%M:%S"
-PATH_CURRENCIES = '../data/currencies.csv'
-PATH_ARCHIVE_CURRENCIES = '../data/archive_currencies.csv'
-PATH_LINKS = '../data/links.csv'
-PATH_NAMES_CURR = '../data/all_curr_full.csv'
+PATH_CURRENCIES = 'data/currencies.csv'
+PATH_ARCHIVE_CURRENCIES = 'data/archive_currencies.csv'
+PATH_LINKS = 'data/links.csv'
+PATH_NAMES_CURR = 'data/all_curr_full.csv'
 
 
 class DB:

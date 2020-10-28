@@ -34,6 +34,7 @@ HELP_MESSAGE = 'Если ты, Лебовский, решил узнать гд�
 
 class BotCommander:
     def __init__(self, TOKEN):
+        self.counter = -1
         self.urlstring = 'https://api.telegram.org/bot{}/'.format(TOKEN) + '{}'
         self.response = requests.post(url=self.urlstring.format('getUpdates'))
         self.updates = json.loads(self.response.content)
@@ -217,27 +218,44 @@ class BotCommander:
             chat_id = response['message']['chat']['id']
             self.send_button(button_dict=self.buttons_type_from, chat_id=chat_id)
 
-        elif ('message' in response) and (self.data[response['message']['chat']['id']]['status'] == 1):
-            amount_base_dict = self.data[response['message']['chat']['id']]
-            amount_base_dict['timestamp_amount'] = response['message']['date']
-            amount_base_dict['amount'] = response['message']['text']
-            amount_base_dict['status'] = 0
-            self.data[response['message']['chat']['id']] = amount_base_dict
-            from_ = self.data[response['message']['chat']['id']]['from'].split('_')[1]
-            to_ = self.data[response['message']['chat']['id']]['to'].split('_')[1]
-            amount_ = float(self.data[response['message']['chat']['id']]['amount'])
-            response_query = self.engine.search(from_, to_, amount_, use_archived=True)
-            response_len = len(response_query)
-            if response_len > 0:
-                string_result = '\n\n'.join([str(i) for i in response_query.values])
-                string_result = '\n\n'.join([CURRENCIES_MESSAGE.format(str(i[1]), str(amount_), str(i[2]),
-                                                                       str(i[5]), str(i[3]),
-                                                                       str(i[0])).replace('_', ' ')
-                                             for i in response_query.values])
-                self.send_message(chat_id=response['message']['chat']['id'], text=string_result)
+        elif 'message' in response:
+            try:
+                if self.data[response['message']['chat']['id']]['status'] == 1:
+                    amount_base_dict = self.data[response['message']['chat']['id']]
+                    amount_base_dict['timestamp_amount'] = response['message']['date']
+                    amount_base_dict['amount'] = response['message']['text']
+                    amount_base_dict['status'] = 0
+                    self.data[response['message']['chat']['id']] = amount_base_dict
+                    from_ = self.data[response['message']['chat']['id']]['from'].split('_')[1]
+                    to_ = self.data[response['message']['chat']['id']]['to'].split('_')[1]
+                    amount_ = float(self.data[response['message']['chat']['id']]['amount'])
+                    response_query = self.engine.search(from_, to_, amount_, use_archived=True)
+                    response_len = len(response_query)
+                    if response_len > 0:
+                        string_result = '\n\n'.join([str(i) for i in response_query.values])
+                        string_result = '\n\n'.join([CURRENCIES_MESSAGE.format(str(i[1]), str(amount_), str(i[2]),
+                                                                               str(i[5]), str(i[3]),
+                                                                               str(i[0])).replace('_', ' ')
+                                                     for i in response_query.values])
+                        self.send_message(chat_id=response['message']['chat']['id'], text=string_result)
+                else:
+                    pass
+            except KeyError:
+                pass
+
 
         else:
             print('Err')
+
+    def start(self, update_counter):
+        while True:
+            for i in self.query:
+                if i['update_id'] > update_counter:
+                    self.proceed_query(i)
+                    update_counter = i['update_id']
+                else:
+                    pass
+            self.update()
 
 
 a = BotCommander(TOKEN)

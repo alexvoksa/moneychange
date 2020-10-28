@@ -9,5 +9,6 @@
 *.gif
 *.jpeg
 *.jpg
+*.mmdb
 /data/
 /venv/
