@@ -5,9 +5,12 @@ import datetime
 import time
 import json
 from lib.create_db import DB
+from lib.preprocessing import Preprocessor
 
 with open('../data/token.txt', 'r') as f:
     TOKEN = f.read()
+
+CHANGE_STR = 'You change {} to {}.\nEnter money amount you want to change'
 
 CURRENCIES_MESSAGE = '{}\n' \
                      '<pre>' \
@@ -57,6 +60,9 @@ class BotCommander:
         self.crypto_list = [i[0] for i in self.crypto]
         self.ecomm_list = [i[0] for i in self.ecomm]
 
+        self.start_buttons = [{"text": str(i[0]), "callback_data": str(i[1])} for i in [('FIND', '/cc'),
+                                                                                        ('CHECK', '/ck')]]
+
         self.fiat_buttons_from = [{"text": str(i[1]), "callback_data": 'from_' + str(i[0])} for i in self.fiat]
         self.crypto_buttons_from = [{"text": str(i[0]), "callback_data": 'from_' + str(i[0])} for i in self.crypto]
         self.ecomm_buttons_from = [{"text": str(i[1]), "callback_data": 'from_' + str(i[0])} for i in self.ecomm]
@@ -105,6 +111,10 @@ class BotCommander:
             {"inline_keyboard": BotCommander.create_buttons_row(2, self.fiat_buttons_to)
              }
                                 }
+        self.buttons_start = {"chat_id": "", "text": "What U want to do?", "reply_markup":
+            {"inline_keyboard": BotCommander.create_buttons_row(2, self.start_buttons)
+             }
+                              }
         self.buttons_crypto_to = {"chat_id": "", "text": "Change CRYPTO?", "reply_markup":
             {"inline_keyboard": BotCommander.create_buttons_row(3, self.crypto_buttons_to)
              }
@@ -115,28 +125,91 @@ class BotCommander:
                                  }
 
         self.data = {}
-        # {'chat_id': {'status': None, 'user_id': None, 'first_name': None, 'username': None,
+        # {'chat_id': {'status': None, 'check':None, 'user_id': None, 'first_name': None, 'username': None,
         #                'language_code': None, 'date': None, 'from': None, 'to': None, 'amount': None}}
         self.engine = DB()
 
+        self.verifier = Preprocessor()
+        self.verifier.generate_data()
+
     @staticmethod
     def create_buttons_row(shift, buttons_list):
+        """
+        This func generates buttons row. Takes list with dict of
+        button name and callback_query response that will be sent to server
+        when user presses on button
+        :param shift: integer
+        :param buttons_list: list of dicts
+        :return: list
+        """
         return [buttons_list[start:start + shift] for start in range(0, len(buttons_list) - shift + 1, shift)]
 
     @staticmethod
     def generate_curr_arrays(type_, dataframe):
         return np.array(dataframe[dataframe['type_short'] == type_][['code', 'desc']])
 
+    def __update_user_info(self, type_,  response):
+        if type_ == 'callback':
+            chat_id = response['callback_query']['message']['chat']['id']
+            user_id = response['callback_query']['from']['id']
+            first_name = response['callback_query']['from']['first_name']
+            username = response['callback_query']['from']['username']
+            language_code = response['callback_query']['from']['language_code']
+        elif type_ == 'message':
+            chat_id = response['message']['chat']['id']
+            user_id = response['message']['from']['id']
+            first_name = response['message']['from']['first_name']
+            username = response['message']['from']['username']
+            language_code = response['message']['from']['language_code']
+        try:
+            if self.data[chat_id]:
+                pass
+        except KeyError:
+            self.data.update({chat_id: {}})
+        self.data[chat_id]['user_id'] = user_id
+        self.data[chat_id]['first_name'] = first_name
+        self.data[chat_id]['username'] = username
+        self.data[chat_id]['language_code'] = language_code
+
     def update(self):
+        """
+        This function uses short-polling and looking for new data
+        After receiving json file from Telegram server it decodes file
+        and appends it to existing query parameter in class BotCommander
+        :return:
+        """
         self.response = requests.post(url='https://api.telegram.org/bot{}/getUpdates'.format(TOKEN))
         self.updates = json.loads(self.response.content)
         self.query = self.query + self.updates['result']
 
-    def send_message(self, chat_id, text):
-        send_string = 'sendMessage?chat_id={}&text={}'.format(chat_id, text)
-        requests.post(url=self.urlstring.format(send_string))
+    def send_message(self, chat_id, text, parse_mode='HTML'):
+        """
+        This func create POST-request and sends it to a Telegram server
+        As a result, user with necessary chat_id will receive message with
+        'text'. You can use MarkdownV2
+        :param parse_mode: MarkdownV2, HTML(by default), Markdown
+        :param chat_id: integer
+        :param text: string
+        :return: POST-request to a Telegram server
+        """
+        if parse_mode == 'HTML':
+            send_string = 'sendMessage?chat_id={}&text={}&parse_mode=HTML'\
+                .format(chat_id, text)
+            requests.post(url=self.urlstring.format(send_string))
+        else:
+            send_string = 'sendMessage?chat_id={}&text={}&parse_mode={}'\
+                .format(chat_id, text, parse_mode)
+            requests.post(url=self.urlstring.format(send_string))
 
     def get_last_message(self):
+        """
+        This func update query with a POST-request and get text of a last
+        user message, that was sent to the bot
+        May be useful for logging and watching for client troubles.
+        At this time have no use in this script
+        :return: print to the Python console user parameters and text of the last
+        user message
+        """
         self.update()
         response_ = [self.updates['result'][-1]['message']['from']['id'],
                      self.updates['result'][-1]['message']['from']['first_name'],
@@ -155,21 +228,9 @@ class BotCommander:
         requests.post(urls, json=json.loads(json.dumps(button_dict)))
 
     def proceed_query(self, response):
+        print(response)
         if 'callback_query' in response:
-            chat_id = response['callback_query']['message']['chat']['id']
-            user_id = response['callback_query']['from']['id']
-            first_name = response['callback_query']['from']['first_name']
-            username = response['callback_query']['from']['username']
-            language_code = response['callback_query']['from']['language_code']
-            try:
-                type(self.data[chat_id])
-            except KeyError:
-                self.data.update({chat_id: {}})
-            self.data[chat_id]['user_id'] = user_id
-            self.data[chat_id]['first_name'] = first_name
-            self.data[chat_id]['username'] = username
-            self.data[chat_id]['language_code'] = language_code
-
+            self.__update_user_info('callback', response)
             data = response['callback_query']['data']
             # <-- incoming callback query [fiat_from, crypto_from, ecomm_from]
             if 'fiat_from' in data:
@@ -207,18 +268,35 @@ class BotCommander:
                 base_dict_to['to'] = data
                 base_dict_to['status'] = 1
                 print(base_dict_to)
+                from_what = base_dict_to['from'].split('_')[1]
+                to_what = base_dict_to['to'].split('_')[1]
                 self.data[response['callback_query']['message']['chat']['id']] = base_dict_to
                 print(self.data)
-                self.send_message(chat_id=chat_id, text='Enter money amount you want to change')
+                self.send_message(chat_id=chat_id, text=CHANGE_STR.format(from_what, to_what))
+
+            elif '/ck' in data:
+                chat_id = response['callback_query']['message']['chat']['id']
+                self.data[response['callback_query']['message']['chat']['id']]['check'] = 1
+                self.send_message(chat_id=chat_id, text='Введите номер кошелька отправителя \n'
+                                                        'для проверки')
+            elif '/cc' in data:
+                chat_id = response['callback_query']['message']['chat']['id']
+                self.send_button(button_dict=self.buttons_type_from, chat_id=chat_id)
             # NO QUERY
             else:
-                self.send_message(chat_id=chat_id, text='Ты пидар')
+                chat_id = response['callback_query']['message']['chat']['id']
+                self.send_message(chat_id=chat_id, text='NO QUERY ERROR')
 
-        elif ('message' in response) and ('/start' in response['message']['text']):
+        elif ('message' in response) and ('/cc' in response['message']['text']):
             chat_id = response['message']['chat']['id']
             self.send_button(button_dict=self.buttons_type_from, chat_id=chat_id)
 
+        elif ('message' in response) and ('/start' in response['message']['text']):
+            chat_id = response['message']['chat']['id']
+            self.send_button(button_dict=self.buttons_start, chat_id=chat_id)
+
         elif 'message' in response:
+            self.__update_user_info('message', response)
             try:
                 if self.data[response['message']['chat']['id']]['status'] == 1:
                     amount_base_dict = self.data[response['message']['chat']['id']]
@@ -238,12 +316,16 @@ class BotCommander:
                                                                                str(i[0])).replace('_', ' ')
                                                      for i in response_query.values])
                         self.send_message(chat_id=response['message']['chat']['id'], text=string_result)
-                else:
-                    pass
             except KeyError:
                 pass
-
-
+            try:
+                if self.data[response['message']['chat']['id']]['check'] == 1:
+                    self.data[response['message']['chat']['id']]['check'] = 0
+                    wallet_id = str(response['message']['text'])
+                    wallet_answer = self.verifier.check_user(wallet_id)
+                    self.send_message(chat_id=response['message']['chat']['id'], text=wallet_answer)
+            except KeyError:
+                pass
         else:
             print('Err')
 
@@ -259,3 +341,5 @@ class BotCommander:
 
 
 a = BotCommander(TOKEN)
+a.update()
+a.start(719547207)

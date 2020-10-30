@@ -1,11 +1,10 @@
 import pandas as pd
 import numpy as np
 from lib.Verification import UserCheck
-import re
 from datetime import datetime
-import time
+import pickle
 
-OUTPUT_STRING = 'Результаты проверки: \n\n' \
+OUTPUT_STRING = '<pre>Результаты проверки: \n\n' \
                 'Кошелек {}\n' \
                 'Сделано {} обменов\n' \
                 'Число получателей: {}.\n' \
@@ -15,13 +14,13 @@ OUTPUT_STRING = 'Результаты проверки: \n\n' \
                 'Сводная статистика:\n' \
                 'Вероятность использования ложного ФИО: {}%\n' \
                 'Среднее число имен получателей: {}\n' \
-                'Метрика активности клиента: {}%\n' \
+                'Клиент был активен {} дней\n' \
                 'Полнота контактных данных: {}%\n' \
                 'Вероятность использования VPN: {}%\n' \
-                'Средний чек одного обмена {}$'
+                'Средний чек одного обмена {}$</pre>'
 
-OUTPUT_NONE_STRING = 'Данные по пользователю {} не обнаружены в системе.\n' \
-                     'Вы можете помочь проекту отправив данные об обмене на {}'
+OUTPUT_NONE_STRING = '<pre>Данные по пользователю {} не обнаружены в системе.\n' \
+                     'Вы можете помочь проекту отправив данные об обмене на {}</pre>'
 
 
 class Preprocessor:
@@ -35,6 +34,73 @@ class Preprocessor:
         self.wallets_dict = None
         self.parameters_list = ['email', 'to_name', 'phone', 'skype', 'messenger', 'ip',
                                 'country', 'city', 'time', 'dollars_amount', 'exodus']
+
+    @staticmethod
+    def fake_name_metric(sender_wallet, wallets_to):
+        names_from_amount = len(sender_wallet['from_name'])
+        wallets_to_amount = len(wallets_to)
+        return round((1 - names_from_amount / wallets_to_amount) * 100, 2)
+
+    @staticmethod
+    def avg_recipients(sender_wallet, wallets_to):
+        wallets_to_amount = len(wallets_to)
+        recipients = []
+        for wallet_to in wallets_to:
+            names_to_amount = len(sender_wallet[wallet_to]['to_name'])
+            recipient_metric = Preprocessor.count_metric(names_to_amount,
+                                                         wallets_to_amount)
+            recipients.append(recipient_metric)
+        return np.mean(recipients)
+
+    @staticmethod
+    def days_active(sender_wallet, wallets_to):
+        total_days_active = []
+        for wallet_to in wallets_to:
+            days_active = Preprocessor.count_active_time(sender_wallet[wallet_to]['time'])
+            total_days_active.append(days_active)
+        return sum(total_days_active)
+
+    @staticmethod
+    def contacts_metric(sender_wallet, wallets_to):
+        contacts_metrics = []
+        for wallet_to in wallets_to:
+            exoduses_amount = len(sender_wallet[wallet_to]['exodus'])
+            # quantity of unique emails for one wallet-receiver divided by amount of operations
+            contacts_metrics.append(Preprocessor.count_metric(sender_wallet[wallet_to]['unique_email'],
+                                                              exoduses_amount))
+
+            # quantity of unique phones for one wallet-receiver divided by amount of operations
+            contacts_metrics.append(Preprocessor.count_metric(sender_wallet[wallet_to]['unique_phone'],
+                                                              exoduses_amount))
+
+            # quantity of unique skype for one wallet-receiver divided by amount of operations
+            contacts_metrics.append(Preprocessor.count_metric(sender_wallet[wallet_to]['unique_skype'],
+                                                              exoduses_amount))
+
+            # quantity of unique messengers for one wallet-receiver divided by amount of operations
+            contacts_metrics.append(Preprocessor.count_metric(sender_wallet[wallet_to]['unique_messenger'],
+                                                              exoduses_amount))
+        return round(np.mean(contacts_metrics) * 100, 2)
+
+    @staticmethod
+    def vpn_metric(sender_wallet, wallets_to):
+        vpn_metrics = []
+        for wallet_to in wallets_to:
+            exoduses_amount = len(sender_wallet[wallet_to]['exodus'])
+            # Less different IP's better. VPN and proxy metric. Best == 0, worst == 1
+            vpn_metrics.append(Preprocessor.count_metric(sender_wallet[wallet_to]['unique_ip'],
+                                                         exoduses_amount))
+            # Less different countries is better. VPN and proxy metric. Best == 1, worst == 0
+            vpn_metrics.append(Preprocessor.count_metric(sender_wallet[wallet_to]['unique_country'],
+                                                         exoduses_amount))
+            # Less different cities is better. VPN and proxy metric. Best == 0, worst == 1
+            vpn_metrics.append(Preprocessor.count_metric(sender_wallet[wallet_to]['unique_city'],
+                                                         exoduses_amount))
+        return round((1 - np.median(vpn_metrics)) * 100, 2)
+
+    @staticmethod
+    def average_check(sender_wallet):
+        return round(sender_wallet['dollar_total'] / sender_wallet['total_operations'], 2)
 
     @staticmethod
     def dollar_equivalent(database_dictionary, amount_in, currency_id):
@@ -185,7 +251,7 @@ class Preprocessor:
             data.index = [i for i in range(len(data))]
         else:
             print('DataFrame not properly constructed! Wrong columns! \n'
-                  'nesessary columns:\n'
+                  'necessary columns:\n'
                   '[id, user_id, sys_from, sys_to, amount_from, amount_to, course, from_st, to_st, from_name,\n'
                   'to_name, from_id,to_id, z_time, pay_time, cancel_time, confirm_time, transaction_number,\n'
                   'c_time, user_contacts, user_ip, user_email, partner_id, partner_coeff, cancel_comment,\n'
@@ -310,15 +376,9 @@ class Preprocessor:
         # amount of different senders per one sender wallet filled by customer
         for key_from in wallets_from:
             contacts_from_amount = len(wallets_dict[key_from]['from_name'])
+
             # quantity of linked wallets, except other parameters like dollar amount, mean metrics etc.
             wallets_dict[key_from]['sender_names_amount'] = contacts_from_amount
-
-            # Lists for counted metrics
-            # Metrics will be appended on every iteration
-            mean_contacts_metric = []
-            mean_ip_metric = []
-            mean_activity_metric = []
-            mean_receiver_names_metric = []
 
             # Wallets to list
             wallets_to = list(wallets_dict[key_from].keys()).copy()
@@ -328,110 +388,51 @@ class Preprocessor:
             wallets_to = [key for key in wallets_to if key not in exceptions_list_from]
             wallets_to_amount = len(wallets_to)
 
-            for key_to in wallets_to:
-                names_to_amount = len(wallets_dict[key_from][key_to]['to_name'])
-                exoduses_amount = len(wallets_dict[key_from][key_to]['exodus'])
-                exodus_positive = sum(wallets_dict[key_from][key_to]['exodus'])
-
-                # amount of active days when operations were made to receiver wallet
-                days_active = Preprocessor.count_active_time(wallets_dict[key_from][key_to]['time'])
-
-                # frequency of operations per days of activity
-                activity_metric = Preprocessor.count_metric(exoduses_amount, days_active)
-                # amount of positive exoduses divided by exoduses amount
-                relative_positive_exoduses = Preprocessor.count_metric(exodus_positive, exoduses_amount)
-                # quantity of unique receivers (names) for one wallet-receiver divided by amount of operations
-                relative_names_metric = Preprocessor.count_metric(names_to_amount, wallets_to_amount)
-                # quantity of unique emails for one wallet-receiver divided by amount of operations
-                relative_email_metric = Preprocessor.count_metric(wallets_dict[key_from][key_to]['unique_email'],
-                                                                  exoduses_amount)
-                # quantity of unique phones for one wallet-receiver divided by amount of operations
-                relative_phone_metric = Preprocessor.count_metric(wallets_dict[key_from][key_to]['unique_phone'],
-                                                                  exoduses_amount)
-                # quantity of unique skype for one wallet-receiver divided by amount of operations
-                relative_skype_metric = Preprocessor.count_metric(wallets_dict[key_from][key_to]['unique_skype'],
-                                                                  exoduses_amount)
-                # quantity of unique messengers for one wallet-receiver divided by amount of operations
-                relative_messenger_metric = Preprocessor.count_metric(
-                    wallets_dict[key_from][key_to]['unique_messenger'],
-                    exoduses_amount)
-                # Less different IP's better. VPN and proxy metric. Best == 0, worst == 1
-                relative_ip_metric = Preprocessor.count_metric(wallets_dict[key_from][key_to]['unique_ip'],
-                                                               exoduses_amount)
-                # Less different countries is better. VPN and proxy metric. Best == 1, worst == 0
-                relative_country_metric = Preprocessor.count_metric(wallets_dict[key_from][key_to]['unique_country'],
-                                                                    exoduses_amount)
-                # Less different cities is better. VPN and proxy metric. Best == 0, worst == 1
-                relative_city_metric = Preprocessor.count_metric(wallets_dict[key_from][key_to]['unique_city'],
-                                                                 exoduses_amount)
-
-                # Adding counted metrics to recipients wallets
-                metric_names = ['names_metric', 'email_metric', 'phone_metric', 'skype_metric', 'messenger_metric',
-                                'ip_metric', 'country_metric', 'city_metric', 'exodus_metric', 'activity_metric',
-                                'days_active']
-                metrics = [relative_names_metric, relative_email_metric, relative_phone_metric, relative_skype_metric,
-                           relative_messenger_metric, relative_ip_metric, relative_country_metric, relative_city_metric,
-                           relative_positive_exoduses, activity_metric, days_active]
-                for metric_name, metric in zip(metric_names, metrics):
-                    wallets_dict[key_from][key_to].update({metric_name: metric})
-
-                # Add name metric to mean_receiver_names_metric
-                mean_receiver_names_metric.append(relative_names_metric)
-                # Adding contacts metrics to mean_contacts_metric
-                for contact_metric in [relative_email_metric, relative_phone_metric,
-                                       relative_skype_metric, relative_messenger_metric]:
-                    mean_contacts_metric.append(contact_metric)
-
-                # Adding IP, Country, City to mean_ip_metric
-                # for ip_metric in [relative_ip_metric, relative_country_metric, relative_city_metric]: # !!!
-                #    mean_ip_metric.append(ip_metric)
-                # ||
-                # \/  This is a VPN metric. More different countries == More VPN probability
-                mean_ip_metric.append(1 - relative_country_metric)
-
-                # Adding activity metric to mean activity metrics
-                mean_activity_metric.append(wallets_dict[key_from][key_to]['activity_metric'])
-
-            mean_receiver_names_metric = np.mean(mean_receiver_names_metric)
-            mean_contacts_metric = np.mean(mean_contacts_metric)
-            mean_ip_metric = np.mean(mean_ip_metric)
-            mean_activity_metric = np.mean(mean_activity_metric)
-
             wallets_dict[key_from]['number_of_receivers'] = wallets_to_amount
-            wallets_dict[key_from]['mean_receiver_names_metric'] = mean_receiver_names_metric
-            wallets_dict[key_from]['mean_contacts_metric'] = mean_contacts_metric
+            wallets_dict[key_from]['avg_recipients_metric'] = Preprocessor.avg_recipients(wallets_dict[key_from],
+                                                                                          wallets_to)
+
+            wallets_dict[key_from]['mean_contacts_metric'] = Preprocessor.contacts_metric(wallets_dict[key_from],
+                                                                                          wallets_to)
 
             # VPN metric
-            wallets_dict[key_from]['mean_ip_metric'] = mean_ip_metric
+            wallets_dict[key_from]['mean_vpn_metric'] = Preprocessor.vpn_metric(wallets_dict[key_from],
+                                                                                wallets_to)
             # amount of operations per day
-            wallets_dict[key_from]['mean_activity_metric'] = mean_activity_metric
+            wallets_dict[key_from]['daily_operations_metric'] = Preprocessor.days_active(wallets_dict[key_from],
+                                                                                         wallets_to)
             # quantity metric of different wallets that receive money
             #
             # amount of sender names divided by number of receivers
             # Metric for using fake name
             wallets_dict[key_from]['sender_names_metric'] = 1 - wallets_dict[key_from]['sender_names_amount'] / \
                                                             wallets_to_amount
+
             # dollar amount per operation
-            wallets_dict[key_from]['relative_dollar_metric'] = wallets_dict[key_from]['dollar_total'] / \
-                                                               wallets_dict[key_from]['total_operations']
+            wallets_dict[key_from]['relative_dollar_metric'] = Preprocessor.average_check(wallets_dict[key_from])
         self.wallets_dict = wallets_dict
+
         return wallets_dict
 
     def check_user(self, wallet_id):
         wallet_id = str(wallet_id)
-        print(OUTPUT_STRING.format(wallet_id,
-                                   str(self.wallets_dict[wallet_id]['total_operations']),
-                                   str(self.wallets_dict[wallet_id]['number_of_receivers']),
-                                   str(self.wallets_dict[wallet_id]['accepted_operations']),
-                                   str(self.wallets_dict[wallet_id]['rejected_operations']),
-                                   str(round(self.wallets_dict[wallet_id]['sender_names_metric']*100, 2)),
-                                   str(round(self.wallets_dict[wallet_id]['mean_receiver_names_metric'])),
-                                   str(round(self.wallets_dict[wallet_id]['mean_activity_metric']*100, 2)),
-                                   str(round(self.wallets_dict[wallet_id]['mean_contacts_metric']*100, 2)),
-                                   str(round(self.wallets_dict[wallet_id]['mean_ip_metric']*100, 2)),
-                                   str(round(self.wallets_dict[wallet_id]['relative_dollar_metric'], 2))
-                                   )
-              )
+        try:
+            if self.wallets_dict[wallet_id]:
+                return OUTPUT_STRING.format(wallet_id,
+                                            str(self.wallets_dict[wallet_id]['total_operations']),
+                                            str(self.wallets_dict[wallet_id]['number_of_receivers']),
+                                            str(self.wallets_dict[wallet_id]['accepted_operations']),
+                                            str(self.wallets_dict[wallet_id]['rejected_operations']),
+                                            str(self.wallets_dict[wallet_id]['sender_names_metric']),
+                                            str(self.wallets_dict[wallet_id]['avg_recipients_metric']),
+                                            str(self.wallets_dict[wallet_id]['daily_operations_metric']),
+                                            str(self.wallets_dict[wallet_id]['mean_contacts_metric']),
+                                            str(self.wallets_dict[wallet_id]['mean_vpn_metric']),
+                                            str(self.wallets_dict[wallet_id]['relative_dollar_metric'])
+                                            )
+
+        except KeyError:
+            return OUTPUT_NONE_STRING.format(wallet_id, 'biba@boba.com')
 
     def generate_data(self):
         self.__prepare_dataframe()
@@ -453,10 +454,6 @@ class Preprocessor:
         self.__count_metrics(self.__count_amounts(self.__generate_wallets_dict(*data_columns)))
         random_id = np.random.randint(0, len(self.wallets_dict))
         wallet_key = list(self.wallets_dict.keys())[random_id]
-        self.check_user(wallet_key)
 
 
-a = Preprocessor()
-a.generate_data()
-
-print('Ho-ho')
+print('User database initialised')
