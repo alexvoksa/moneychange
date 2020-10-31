@@ -1,15 +1,21 @@
 from lib.create_db import DB
 from lib.telegram_bot import BotCommander
-from lib.preprocessing import Preprocessor, OUTPUT_NONE_STRING, OUTPUT_STRING
+from lib.preprocessing import Preprocessor
 import time
 
-databaser = DB()
-commander = BotCommander()
-verificator = Preprocessor()
-counter = -1
+with open('../data/LAST_UPDATE.txt', 'r') as counter:
+    COUNTER = counter.readlines()[-1]
+
+with open('../data/token.txt', 'r') as f:
+    TOKEN = f.read()
+
+COURSES = DB()
+# COURSES.update_db()
+VERIFICATION = Preprocessor()
+BOT = BotCommander(TOKEN, COUNTER, COURSES, VERIFICATION)
 
 if __name__ == '__main__':
-    commander.start(-1)
+    BOT.start(COUNTER)
 
 
 

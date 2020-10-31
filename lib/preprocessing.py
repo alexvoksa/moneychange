@@ -31,9 +31,9 @@ class Preprocessor:
         self.money_db = pd.read_csv(self.path_to_money_db)  # columns = ['id', 'name', 'short_name', 'real_rate_to_usd']
         self.course_dict = {str(i): str(k) for (i, k) in zip(self.money_db['id'],
                                                              self.money_db['real_rate_to_usd'])}
-        self.wallets_dict = None
         self.parameters_list = ['email', 'to_name', 'phone', 'skype', 'messenger', 'ip',
                                 'country', 'city', 'time', 'dollars_amount', 'exodus']
+        self.wallets_dict = self.generate_data()
 
     @staticmethod
     def fake_name_metric(sender_wallet, wallets_to):
@@ -313,9 +313,8 @@ class Preprocessor:
                 updater = {wallet_to: {key: [value] for key, value in zip(self.parameters_list, sub_wallet_values)}}
                 wallets_dict[wallet_from] = {'from_name': [from_name]}
                 wallets_dict[wallet_from].update(updater)
-
-        self.wallets_dict = wallets_dict
         return wallets_dict
+
 
     def __count_amounts(self, wallets_dict):
         for key_from in wallets_dict.keys():
@@ -362,8 +361,6 @@ class Preprocessor:
             wallets_dict[key_from]['rejected_operations'] = rejected_operations
             # add comment
             wallets_dict[key_from]['dollar_total'] = sum(wallets_dict[key_from]['dollar_total'])
-
-        self.wallets_dict = wallets_dict
         return wallets_dict
 
     def __count_metrics(self, wallets_dict):
@@ -410,8 +407,6 @@ class Preprocessor:
 
             # dollar amount per operation
             wallets_dict[key_from]['relative_dollar_metric'] = Preprocessor.average_check(wallets_dict[key_from])
-        self.wallets_dict = wallets_dict
-
         return wallets_dict
 
     def check_user(self, wallet_id):
@@ -451,9 +446,7 @@ class Preprocessor:
                         self.main_dataframe['exodus_status'],
                         self.main_dataframe['amount_from'],
                         self.main_dataframe['sys_from']]
-        self.__count_metrics(self.__count_amounts(self.__generate_wallets_dict(*data_columns)))
-        random_id = np.random.randint(0, len(self.wallets_dict))
-        wallet_key = list(self.wallets_dict.keys())[random_id]
+        return self.__count_metrics(self.__count_amounts(self.__generate_wallets_dict(*data_columns)))
 
 
 print('User database initialised')

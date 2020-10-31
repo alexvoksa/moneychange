@@ -4,13 +4,10 @@ import numpy as np
 import datetime
 import time
 import json
-from lib.create_db import DB
-from lib.preprocessing import Preprocessor
 
-with open('../data/token.txt', 'r') as f:
-    TOKEN = f.read()
 
-CHANGE_STR = 'You change {} to {}.\nEnter money amount you want to change'
+CHANGE_STR = 'Обмен {} на {}.\n' \
+             'Введите сумму, которую Вы хотите обменять'
 
 CURRENCIES_MESSAGE = '{}\n' \
                      '<pre>' \
@@ -34,11 +31,17 @@ HELP_MESSAGE = 'Если ты, Лебовский, решил узнать гд�
                'Если ты - ублюдок, мать твою, решил ко мне лезть - вводи \n' \
                ' /change С_НА_СУММА'
 
+CHANGE_FAULT = 'По вашему запросу ничего не найдено.\n' \
+               'Попробуйте изменить валюту или сумму к обмену.'
+
 
 class BotCommander:
-    def __init__(self, TOKEN):
-        self.counter = -1
-        self.urlstring = 'https://api.telegram.org/bot{}/'.format(TOKEN) + '{}'
+    def __init__(self, TOKEN, COUNTER, COURSES, VERIFICATION):
+        self.token = TOKEN
+        self.counter = COUNTER
+        self.engine = COURSES
+        self.verifier = VERIFICATION
+        self.urlstring = 'https://api.telegram.org/bot{}/'.format(self.token) + '{}'
         self.response = requests.post(url=self.urlstring.format('getUpdates'))
         self.updates = json.loads(self.response.content)
         try:
@@ -74,7 +77,7 @@ class BotCommander:
         '''final buttons, that used in bot'''
         # these two stands for currency type: FIAT, CRYPTO and ECOMM
         # and this one stands for 'from' callback query
-        self.buttons_type_from = {"chat_id": "", "text": "Change FROM?",
+        self.buttons_type_from = {"chat_id": "", "text": "Отдаю",
                                   "reply_markup": {"inline_keyboard": [
                                       [{"text": "FIAT", "callback_data": "fiat_from"},
                                        {"text": "CRYPTO", "callback_data": "crypto_from"},
@@ -83,7 +86,7 @@ class BotCommander:
                                   }
                                   }
         # and this one stands for 'to' callback query
-        self.buttons_type_to = {"chat_id": "", "text": "Change TO?",
+        self.buttons_type_to = {"chat_id": "", "text": "Меняю на",
                                 "reply_markup": {"inline_keyboard": [
                                     [{"text": "FIAT", "callback_data": "fiat_to"},
                                      {"text": "CRYPTO", "callback_data": "crypto_to"},
@@ -93,33 +96,33 @@ class BotCommander:
                                 }
         # These three stands for 'from' callback query, that calls back when one of
         # 'FIAT', 'CRYPTO' or 'ECOMM' buttons were pressed first time
-        self.buttons_fiat_from = {"chat_id": "", "text": "Change FIAT?", "reply_markup":
+        self.buttons_fiat_from = {"chat_id": "", "text": "Обмен с фиатных валюты", "reply_markup":
             {"inline_keyboard": BotCommander.create_buttons_row(2, self.fiat_buttons_from)
              }
                                   }
-        self.buttons_crypto_from = {"chat_id": "", "text": "Change CRYPTO?", "reply_markup":
+        self.buttons_crypto_from = {"chat_id": "", "text": "Обмен с криптовалют", "reply_markup":
             {"inline_keyboard": BotCommander.create_buttons_row(3, self.crypto_buttons_from)
              }
                                     }
-        self.buttons_ecomm_from = {"chat_id": "", "text": "Change ECOMM?", "reply_markup":
+        self.buttons_ecomm_from = {"chat_id": "", "text": "Обмен с E-commerce", "reply_markup":
             {"inline_keyboard": BotCommander.create_buttons_row(2, self.ecomm_buttons_from)
              }
                                    }
         # These three stands for 'to' callback query, that calls back when one of
         # 'FIAT', 'CRYPTO' or 'ECOMM' buttons were pressed second time
-        self.buttons_fiat_to = {"chat_id": "", "text": "Change FIAT?", "reply_markup":
+        self.buttons_fiat_to = {"chat_id": "", "text": "Обмен на фиатные валюты", "reply_markup":
             {"inline_keyboard": BotCommander.create_buttons_row(2, self.fiat_buttons_to)
              }
                                 }
-        self.buttons_start = {"chat_id": "", "text": "What U want to do?", "reply_markup":
+        self.buttons_start = {"chat_id": "", "text": "Что Вы хотите сделать", "reply_markup":
             {"inline_keyboard": BotCommander.create_buttons_row(2, self.start_buttons)
              }
                               }
-        self.buttons_crypto_to = {"chat_id": "", "text": "Change CRYPTO?", "reply_markup":
+        self.buttons_crypto_to = {"chat_id": "", "text": "Обмен на криптовалюлты", "reply_markup":
             {"inline_keyboard": BotCommander.create_buttons_row(3, self.crypto_buttons_to)
              }
                                   }
-        self.buttons_ecomm_to = {"chat_id": "", "text": "Change ECOMM?", "reply_markup":
+        self.buttons_ecomm_to = {"chat_id": "", "text": "Обмен на E-commerce", "reply_markup":
             {"inline_keyboard": BotCommander.create_buttons_row(2, self.ecomm_buttons_to)
              }
                                  }
@@ -127,10 +130,7 @@ class BotCommander:
         self.data = {}
         # {'chat_id': {'status': None, 'check':None, 'user_id': None, 'first_name': None, 'username': None,
         #                'language_code': None, 'date': None, 'from': None, 'to': None, 'amount': None}}
-        self.engine = DB()
 
-        self.verifier = Preprocessor()
-        self.verifier.generate_data()
 
     @staticmethod
     def create_buttons_row(shift, buttons_list):
@@ -178,7 +178,7 @@ class BotCommander:
         and appends it to existing query parameter in class BotCommander
         :return:
         """
-        self.response = requests.post(url='https://api.telegram.org/bot{}/getUpdates'.format(TOKEN))
+        self.response = requests.post(url='https://api.telegram.org/bot{}/getUpdates'.format(self.token))
         self.updates = json.loads(self.response.content)
         self.query = self.query + self.updates['result']
 
@@ -230,6 +230,7 @@ class BotCommander:
     def proceed_query(self, response):
         print(response)
         if 'callback_query' in response:
+            chat_id = response['callback_query']['message']['chat']['id']
             self.__update_user_info('callback', response)
             data = response['callback_query']['data']
             # <-- incoming callback query [fiat_from, crypto_from, ecomm_from]
@@ -316,6 +317,9 @@ class BotCommander:
                                                                                str(i[0])).replace('_', ' ')
                                                      for i in response_query.values])
                         self.send_message(chat_id=response['message']['chat']['id'], text=string_result)
+                    else:
+                        self.send_message(chat_id=response['message']['chat']['id'], text=CHANGE_FAULT)
+
             except KeyError:
                 pass
             try:
@@ -330,16 +334,17 @@ class BotCommander:
             print('Err')
 
     def start(self, update_counter):
-        while True:
-            for i in self.query:
-                if i['update_id'] > update_counter:
-                    self.proceed_query(i)
-                    update_counter = i['update_id']
-                else:
-                    pass
-            self.update()
+        print('Bot ONLINE')
+        with open('../data/LAST_UPDATE.txt', 'a') as container:
+            while True:
+                for i in self.query:
+                    update_counter = int(update_counter)
+                    if i['update_id'] > update_counter:
+                        self.proceed_query(i)
+                        update_counter = str(i['update_id'])
+                        container.write('\n')
+                        container.write(update_counter)
+                    else:
+                        pass
+                self.update()
 
-
-a = BotCommander(TOKEN)
-a.update()
-a.start(719547207)
