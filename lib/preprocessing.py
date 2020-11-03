@@ -17,7 +17,8 @@ OUTPUT_STRING = '<pre>Результаты проверки: \n\n' \
                 'Клиент был активен {} дней\n' \
                 'Полнота контактных данных: {}%\n' \
                 'Вероятность использования VPN: {}%\n' \
-                'Средний чек одного обмена {}$</pre>'
+                'Средний чек одного обмена {}$\n' \
+                'Последний комментарий: \n{}</pre>'
 
 OUTPUT_NONE_STRING = '<pre>Данные по пользователю {} не обнаружены в системе.\n' \
                      'Вы можете помочь проекту отправив данные об обмене на {}</pre>'
@@ -32,7 +33,7 @@ class Preprocessor:
         self.course_dict = {str(i): str(k) for (i, k) in zip(self.money_db['id'],
                                                              self.money_db['real_rate_to_usd'])}
         self.parameters_list = ['email', 'to_name', 'phone', 'skype', 'messenger', 'ip',
-                                'country', 'city', 'time', 'dollars_amount', 'exodus']
+                                'country', 'city', 'time', 'dollars_amount', 'exodus', 'comment']
         self.wallets_dict = self.generate_data()
 
     @staticmethod
@@ -221,7 +222,8 @@ class Preprocessor:
             data['exodus_month'] = [i.month for i in data['exodus_time']]
             data['exodus_year'] = [i.year for i in data['exodus_time']]
 
-            data['cancel_comment'] = data['cancel_comment'].apply(Preprocessor.is_null).astype(bool)
+            # data['cancel_comment'] = data['cancel_comment'].apply(Preprocessor.is_null).astype(bool)
+            data['cancel_comment'] = data['cancel_comment'].astype(str)
 
             data['customer_city'], data['customer_country'], \
             data['geoname_id'], data['threat'] = UserCheck.get_info_from_ip(data['user_ip'])
@@ -261,7 +263,8 @@ class Preprocessor:
 
     def __generate_wallets_dict(self, wallet_from_id_array, email_array, wallet_to_id_array, name_from_array,
                                 name_to_array, phone_array, skype_array, messenger_array, ip_array, country_array,
-                                city_array, time_array, exodus_array, amount_in_array, currency_id_array):
+                                city_array, time_array, exodus_array, amount_in_array, currency_id_array,
+                                comment_array):
         """
         Baseline wallet structure looks like
         wallet_from: {wallet_to: {'email': [email],
@@ -279,13 +282,11 @@ class Preprocessor:
                       }
         """
         wallets_dict = {}
-        for wallet_from, email, wallet_to, from_name, to_name, phone, skype, messenger, ip, country, city, time_, \
-            exodus, amount_in, \
-            currency_id in zip(wallet_from_id_array, email_array, wallet_to_id_array, name_from_array,
-                               name_to_array, phone_array, skype_array, messenger_array,
-                               ip_array, country_array, city_array,
-                               time_array,
-                               exodus_array, amount_in_array, currency_id_array):
+        for wallet_from, email, wallet_to, from_name, to_name, phone, skype, messenger, \
+            ip, country, city, time_, exodus, amount_in, currency_id,\
+            comment in zip(wallet_from_id_array, email_array, wallet_to_id_array, name_from_array, name_to_array,
+                           phone_array, skype_array, messenger_array, ip_array, country_array, city_array,
+                           time_array, exodus_array, amount_in_array, currency_id_array, comment_array):
 
             phone = Preprocessor.leave_digits(str(phone))  # +
 
@@ -295,7 +296,7 @@ class Preprocessor:
             time_ = '/'.join([str(time_.year), str(time_.month), str(time_.day)])  # +
 
             sub_wallet_values = [email, to_name, phone, skype, messenger, ip,
-                                 country, city, time_, dollar_amount, exodus]
+                                 country, city, time_, dollar_amount, exodus, comment]
             try:
                 if wallets_dict[wallet_from]:
                     wallets_dict[wallet_from]['from_name'].append(from_name)
@@ -313,10 +314,11 @@ class Preprocessor:
                 updater = {wallet_to: {key: [value] for key, value in zip(self.parameters_list, sub_wallet_values)}}
                 wallets_dict[wallet_from] = {'from_name': [from_name]}
                 wallets_dict[wallet_from].update(updater)
+
         return wallets_dict
 
-
-    def __count_amounts(self, wallets_dict):
+    @staticmethod
+    def __count_amounts(wallets_dict):
         for key_from in wallets_dict.keys():
             wallets_dict[key_from]['from_name'] = Preprocessor.drop_duplicates(wallets_dict[key_from]['from_name'])
             wallets_dict[key_from]['from_name'] = Preprocessor.remove_empty_element(wallets_dict[key_from]['from_name'])
@@ -324,16 +326,18 @@ class Preprocessor:
             wallets_dict[key_from]['dollar_total'] = []
 
             wallets_dict[key_from]['total_exodus'] = []
+            wallets_dict[key_from]['comments_total'] = []
 
             for key_to in wallets_dict[key_from].keys():
                 if key_to not in ['from_name', 'dollar_total', 'total_exodus', 'unique_email', 'unique_to_name',
                                   'unique_phone', 'unique_skype', 'unique_messenger', 'unique_ip',
-                                  'unique_country', 'unique_city']:
+                                  'unique_country', 'unique_city', 'comments_total']:
 
                     quantity_sub_keys_list = ['unique_email', 'unique_to_name', 'unique_phone', 'unique_skype',
                                               'unique_messenger', 'unique_ip', 'unique_country', 'unique_city']
 
-                    sub_keys_list = ['email', 'to_name', 'phone', 'skype', 'messenger', 'ip', 'country', 'city']
+                    sub_keys_list = ['email', 'to_name', 'phone', 'skype', 'messenger', 'ip',
+                                     'country', 'city']
 
                     for sub_key, quantity in zip(sub_keys_list, quantity_sub_keys_list):
                         wallets_dict[key_from][key_to][sub_key] = \
@@ -348,10 +352,12 @@ class Preprocessor:
                     # as a result, cycle must avoid use them
                     wallets_dict[key_from]['total_exodus'].extend(wallets_dict[key_from][key_to]['exodus'])
                     wallets_dict[key_from]['dollar_total'].extend(wallets_dict[key_from][key_to]['dollars_amount'])
+                    wallets_dict[key_from]['comments_total'].extend(wallets_dict[key_from][key_to]['comment'])
                 else:
                     pass
 
             # add comment
+            wallets_dict[key_from]['comments_total'] = list(set(wallets_dict[key_from]['comments_total']))
             total_operations = len(wallets_dict[key_from]['total_exodus'])
             accepted_operations = sum(wallets_dict[key_from]['total_exodus'])
             rejected_operations = total_operations - accepted_operations
@@ -363,35 +369,30 @@ class Preprocessor:
             wallets_dict[key_from]['dollar_total'] = sum(wallets_dict[key_from]['dollar_total'])
         return wallets_dict
 
-    def __count_metrics(self, wallets_dict):
+    @staticmethod
+    def __count_metrics(wallets_dict):
         """
         This function updates dictionary.
         It can compute necessary metrics and update dictionary
         """
         wallets_from = list(wallets_dict.keys()).copy()
-
         # amount of different senders per one sender wallet filled by customer
         for key_from in wallets_from:
             contacts_from_amount = len(wallets_dict[key_from]['from_name'])
-
             # quantity of linked wallets, except other parameters like dollar amount, mean metrics etc.
             wallets_dict[key_from]['sender_names_amount'] = contacts_from_amount
-
             # Wallets to list
             wallets_to = list(wallets_dict[key_from].keys()).copy()
-
             exceptions_list_from = ['from_name', 'dollar_total', 'total_exodus', 'total_operations',
-                                    'accepted_operations', 'rejected_operations', 'sender_names_amount']
+                                    'accepted_operations', 'rejected_operations',
+                                    'sender_names_amount', 'comments_total']
             wallets_to = [key for key in wallets_to if key not in exceptions_list_from]
             wallets_to_amount = len(wallets_to)
-
             wallets_dict[key_from]['number_of_receivers'] = wallets_to_amount
             wallets_dict[key_from]['avg_recipients_metric'] = Preprocessor.avg_recipients(wallets_dict[key_from],
                                                                                           wallets_to)
-
             wallets_dict[key_from]['mean_contacts_metric'] = Preprocessor.contacts_metric(wallets_dict[key_from],
                                                                                           wallets_to)
-
             # VPN metric
             wallets_dict[key_from]['mean_vpn_metric'] = Preprocessor.vpn_metric(wallets_dict[key_from],
                                                                                 wallets_to)
@@ -404,7 +405,6 @@ class Preprocessor:
             # Metric for using fake name
             wallets_dict[key_from]['sender_names_metric'] = 1 - wallets_dict[key_from]['sender_names_amount'] / \
                                                             wallets_to_amount
-
             # dollar amount per operation
             wallets_dict[key_from]['relative_dollar_metric'] = Preprocessor.average_check(wallets_dict[key_from])
         return wallets_dict
@@ -413,6 +413,8 @@ class Preprocessor:
         wallet_id = str(wallet_id)
         try:
             if self.wallets_dict[wallet_id]:
+                valid_comment = [i if i not in ['', ' ', 'nan', np.nan] else
+                                 'Отсутствует' for i in self.wallets_dict[wallet_id]['comments_total']][-1]
                 return OUTPUT_STRING.format(wallet_id,
                                             str(self.wallets_dict[wallet_id]['total_operations']),
                                             str(self.wallets_dict[wallet_id]['number_of_receivers']),
@@ -423,7 +425,8 @@ class Preprocessor:
                                             str(self.wallets_dict[wallet_id]['daily_operations_metric']),
                                             str(self.wallets_dict[wallet_id]['mean_contacts_metric']),
                                             str(self.wallets_dict[wallet_id]['mean_vpn_metric']),
-                                            str(self.wallets_dict[wallet_id]['relative_dollar_metric'])
+                                            str(self.wallets_dict[wallet_id]['relative_dollar_metric']),
+                                            str(valid_comment)
                                             )
 
         except KeyError:
@@ -445,8 +448,10 @@ class Preprocessor:
                         self.main_dataframe['income_time'],
                         self.main_dataframe['exodus_status'],
                         self.main_dataframe['amount_from'],
-                        self.main_dataframe['sys_from']]
-        return self.__count_metrics(self.__count_amounts(self.__generate_wallets_dict(*data_columns)))
+                        self.main_dataframe['sys_from'],
+                        self.main_dataframe['cancel_comment']
+                        ]
+        return Preprocessor.__count_metrics(Preprocessor.__count_amounts(self.__generate_wallets_dict(*data_columns)))
 
 
 print('User database initialised')

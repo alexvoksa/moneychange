@@ -116,18 +116,15 @@ class UserCheck:
                                'first': answer_str[5]
                                }
 
-                if 'категории' in answer_str[6].lower():
-                    self.phones_data.update(answer_dict)
+                if ('категории' in answer_str[6].lower()) or ('categories' in answer_str[6].lower()):
                     return answer_dict
 
-                elif 'категории' in answer_str[7].lower():
+                elif ('категории' in answer_str[7].lower()) or ('categories' in answer_str[7].lower()):
                     answer_dict.update({'second': answer_str[6]})
-                    self.phones_data.update(answer_dict)
                     return answer_dict
 
-                elif 'категории' in answer_str[8].lower():
-                    answer_dict.update({'second_marks_count': answer_str[6], 'third_marks_count': answer_str[7]})
-                    self.phones_data.update(answer_dict)
+                elif ('категории' in answer_str[8].lower()) or ('categories' in answer_str[8].lower()):
+                    answer_dict.update({'second': answer_str[6], 'third': answer_str[7]})
                     return answer_dict
 
                 else:
