@@ -11,7 +11,7 @@ with open('../data/token.txt', 'r') as f:
     TOKEN = f.read()
 
 COURSES = DB()
-#COURSES.update_db()
+# COURSES.update_db()
 VERIFICATION = Preprocessor()
 BOT = BotCommander(TOKEN, COUNTER, COURSES, VERIFICATION)
 

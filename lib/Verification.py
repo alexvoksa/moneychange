@@ -7,7 +7,8 @@ from tqdm import tqdm
 import geoip2.database
 import requests
 from bs4 import BeautifulSoup
-from typing import List
+
+
 IP_DATABASE_PATH = '../data/Verification/databases_max/GeoLite2-City.mmdb'
 GEO_COLUMNS = ['ip', 'city', 'country', 'id', 'threats']
 CHECKER_WEB_PATH = 'https://www.neberitrubku.ru/nomer-telefona/{}'

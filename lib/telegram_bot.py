@@ -105,7 +105,7 @@ class BotCommander:
                                   }
                                   }
         # and this one stands for 'to' callback query
-        self.buttons_type_to = {"chat_id": "", "text": "Меняю на",
+        self.buttons_type_to = {"chat_id": "", "text": "Получаю",
                                 "reply_markup": {"inline_keyboard": [
                                     [{"text": "FIAT", "callback_data": "fiat_to"},
                                      {"text": "CRYPTO", "callback_data": "crypto_to"},
@@ -259,7 +259,6 @@ class BotCommander:
             elif 'ecomm_from' in data:
                 self.send_button(button_dict=self.buttons_ecomm_from, chat_id=chat_id)
             # --> outgoing query [from_CurrName]
-
             # <-- incoming query [from_CurrName]
             elif 'from_' in data:
                 base_dict_from = self.data[response['callback_query']['message']['chat']['id']]
@@ -269,7 +268,6 @@ class BotCommander:
                 print(self.data)
                 self.send_button(button_dict=self.buttons_type_to, chat_id=chat_id)
             # --> outgoing query [fiat_to, crypto_to, ecomm_to]
-
             # <-- incoming query [fiat_to, crypto_to, ecomm_to]
             elif 'fiat_to' in data:
                 self.send_button(button_dict=self.buttons_fiat_to, chat_id=chat_id)
@@ -281,8 +279,22 @@ class BotCommander:
 
             # <-- incoming query [amount_CurrName]
             elif 'amount_' in data:
+                print(self.data)
+                base_dict_to = self.data[response['callback_query']['message']['chat']['id']]
+                base_dict_to['timestamp_to'] = response['callback_query']['message']['date']
+                base_dict_to['to'] = data
+                base_dict_to['status'] = 1
+                print(base_dict_to)
+                from_what = base_dict_to['from'].split('_')[1]
+                to_what = base_dict_to['to'].split('_')[1]
+                self.data[response['callback_query']['message']['chat']['id']] = base_dict_to
+                print(self.data)
+                self.send_message(chat_id=chat_id, text=CHANGE_STR.format(from_what, to_what))
+
+            elif '/cc' in data:
                 chat_id = response['callback_query']['message']['chat']['id']
                 self.send_button(button_dict=self.buttons_type_from, chat_id=chat_id)
+
             elif '/ck' in data:
                 chat_id = response['callback_query']['message']['chat']['id']
                 self.data[response['callback_query']['message']['chat']['id']]['check'] = 1
@@ -435,18 +447,18 @@ class BotCommander:
                                                         ip_answer[3][0].is_tor_exit_node
                                                         )
                     self.send_message(chat_id=response['message']['chat']['id'], text=ip_str)
+                    counter += 1
                 else:
                     pass
-                counter += 1
             except KeyError:
                 pass
             try:
                 if self.data[response['message']['chat']['id']]['eml'] == 1:
                     self.data[response['message']['chat']['id']]['eml'] = 0
                     self.send_message(chat_id=response['message']['chat']['id'], text='PASS')
+                    counter += 1
                 else:
                     pass
-                counter += 1
             except KeyError:
                 pass
             if counter == 0:
